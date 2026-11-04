@@ -13,10 +13,10 @@ public final class ContentItem {
   List<ContentItem> items=new ArrayList<>();
   for(int i=0;i<rows.length();i++){
    JSONObject o=rows.optJSONObject(i);if(o==null)continue;
-   String user=value(o,"user_id","bj_id","writer_id");if(user.isEmpty())user=fallbackUser;String id=value(o,"title_no","nTitleNo","vod_id");
+   String user=value(o,"user_id","bj_id","writer_id");if(user.isEmpty())user=fallbackUser;String id=value(o,"title_no","nTitleNo","vod_id");String broadcast=value(o,"broad_no","broadNo","bno","BNO");
    if(!ServiceUrls.userId(user)||vod&&!id.matches("[0-9]+"))continue;
    String nick=value(o,"user_nick","writer_nick","nick_name"),title=value(o,"broad_title","title_name","title");if(title.isEmpty())title=nick;
-   items.add(new ContentItem(vod?id:user,user,title,nick,ServiceUrls.https(value(o,"broad_thumb","thumbnail","thumb","broad_img","thumb_url")),value(o,"total_view_cnt","view_cnt","current_view_cnt","view_count"),vod));
+   items.add(new ContentItem(vod?id:(broadcast.isEmpty()?user:broadcast),user,title,nick,ServiceUrls.https(value(o,"broad_thumb","thumbnail","thumb","broad_img","thumb_url")),value(o,"total_view_cnt","view_cnt","current_view_cnt","view_count"),vod));
   }return items;
  }
  public String pageUrl(){return vod?"https://vod.sooplive.com/player/"+id:"https://play.sooplive.com/"+user;}

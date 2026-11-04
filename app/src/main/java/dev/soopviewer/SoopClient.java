@@ -50,12 +50,16 @@ public class SoopClient {
   if(item.vod)return PlaybackInfo.vod(json("https://api.m.sooplive.com/station/video/a/view","nTitleNo="+encode(item.id)+"&nApiLevel=10",item.pageUrl()));
   // Do not pin the channel-info request to a made-up "master" preset. SOOP
   // returns VIEWPRESET here; the chosen preset is sent only in the AID request.
-  JSONObject response=json("https://live.sooplive.com/afreeca/player_live_api.php","bid="+encode(item.user)+"&type=live&player_type=html5&stream_type=common",item.pageUrl());
+  String channelForm="bid="+encode(item.user)+"&type=live&player_type=html5&stream_type=common"+(item.id.matches("[0-9]+")?"&bno="+encode(item.id):"");
+  JSONObject response=json("https://live.sooplive.com/afreeca/player_live_api.php",channelForm,item.pageUrl());
   JSONObject channel=response.optJSONObject("CHANNEL");if(channel==null)throw new IOException("방송 정보를 확인할 수 없습니다");
   if(channel.optInt("RESULT",-1)!=1||channel.optString("BNO").isEmpty())throw new IOException("방송 중이 아니거나 로그인·시청 권한이 필요합니다");
+  // The current broadcast number is required for SOOP to return the live
+  // preset list. Channel-only requests can otherwise expose just 540p.
+  if(!item.id.equals(channel.optString("BNO"))){JSONObject detailed=json("https://live.sooplive.com/afreeca/player_live_api.php","bid="+encode(item.user)+"&bno="+encode(channel.optString("BNO"))+"&type=live&player_type=html5&stream_type=common",item.pageUrl()).optJSONObject("CHANNEL");if(detailed!=null&&detailed.optInt("RESULT",-1)==1)channel=detailed;}
   if("Y".equals(channel.optString("BPWD")))throw new IOException("비밀번호 방송은 공식 화면에서 확인하세요");
   PlaybackInfo info=new PlaybackInfo();info.title=channel.optString("TITLE",item.title);info.user=item.user;info.live=channel;info.qualities.addAll(LiveQuality.offered(channel));info.selectedQuality=LiveQuality.preferred(info.qualities);
-  try{info.media.add(liveStream(item,channel,info.selectedQuality));}catch(Exception first){if(info.selectedQuality.equals("master"))throw first;info.selectedQuality="master";info.media.add(liveStream(item,channel,"master"));}return info;
+  info.media.add(liveStream(item,channel,info.selectedQuality));return info;
  }
  public String liveStream(ContentItem item,JSONObject channel,String quality)throws Exception{
   if(!quality.matches("[A-Za-z0-9_\\-]+"))throw new IllegalArgumentException("화질 정보가 올바르지 않습니다");

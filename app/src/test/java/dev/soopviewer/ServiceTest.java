@@ -9,6 +9,7 @@ public class ServiceTest {
  @Test public void hostsAndLinks(){assertTrue(ServiceUrls.official("play.sooplive.com"));assertTrue(ServiceUrls.official("vod.sooplive.co.kr"));assertFalse(ServiceUrls.official("sooplive.com.evil.test"));assertFalse(ServiceUrls.official(null));assertEquals("",ServiceUrls.https("http://example.com/a"));assertEquals("https://img.example/a",ServiceUrls.https("//img.example/a"));assertFalse(ServiceUrls.userId("../escape"));assertEquals("https://www.sooplive.com/station/demo",ServiceUrls.station("demo"));}
  @Test public void catalogSchemas()throws Exception {
   JSONObject home=new JSONObject("{broad:[{user_id:'demo',broad_title:'방송',user_nick:'닉',broad_thumb:'//img.test/a',total_view_cnt:15}]}");List<ContentItem> rows=ContentItem.parse(home,false);assertEquals(1,rows.size());assertEquals("https://img.test/a",rows.get(0).thumb);assertEquals("15",rows.get(0).viewers);
+  ContentItem live=ContentItem.parse(new JSONObject("{broad:[{user_id:'demo',broad_no:987,broad_title:'LIVE'}]}"),false).get(0);assertEquals("987",live.id);assertEquals("demo",live.user);
   List<ContentItem> vod=ContentItem.parse(new JSONObject("{data:[{user_id:'demo',title_no:123,title_name:'다시보기'}]}"),true);assertEquals("https://vod.sooplive.com/player/123",vod.get(0).pageUrl());
   assertTrue(ContentItem.parse(new JSONObject("{DATA:[]}"),true).isEmpty());
  }

@@ -81,8 +81,8 @@ jobs:
           APK_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           APK_RUN_NUMBER: ${{ github.run_number }}
         run: |
-          apk_tag="preview-0.6.0-${APK_RUN_NUMBER}"
-          mv apk/app-debug.apk apk/soop-viewer-0.6.0.apk
-          sha256sum apk/soop-viewer-0.6.0.apk > apk/SHA256SUMS.txt
-          gh release create "$apk_tag" apk/soop-viewer-0.6.0.apk apk/SHA256SUMS.txt --target "$APK_HEAD_SHA" --prerelease --title "SOOP Viewer 0.6.0 preview ${APK_RUN_NUMBER}" --notes "Direct-install APK signed with the retained project debug key. Build verifies the certificate fingerprint to support future in-place updates."
+          apk_tag="preview-0.6.1-${APK_RUN_NUMBER}"
+          mv apk/app-debug.apk apk/soop-viewer-0.6.1.apk
+          sha256sum apk/soop-viewer-0.6.1.apk > apk/SHA256SUMS.txt
+          gh release create "$apk_tag" apk/soop-viewer-0.6.1.apk apk/SHA256SUMS.txt --target "$APK_HEAD_SHA" --prerelease --title "SOOP Viewer 0.6.1 preview ${APK_RUN_NUMBER}" --notes "Direct-install APK signed with the retained project debug key. Build verifies the certificate fingerprint to support future in-place updates."
           gh release view "$apk_tag" --json assets --jq '.assets[] | select(.name | endswith(".apk")) | .url'
