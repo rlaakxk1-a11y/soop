@@ -48,7 +48,7 @@ jobs:
       - name: Verify APK signature
         run: |
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk
-          key_fingerprint="$(keytool -list -keystore "$SOOP_DEBUG_KEYSTORE" -storepass android -alias androiddebugkey -v | sed -n 's/^SHA256: //p' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          key_fingerprint="$(keytool -list -keystore "$SOOP_DEBUG_KEYSTORE" -storepass android -alias androiddebugkey | sed -n 's/^Certificate fingerprint (SHA-256): //p' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
           apk_fingerprint="$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
           test -n "$key_fingerprint" && test "$key_fingerprint" = "$apk_fingerprint"
       - uses: actions/upload-artifact@v4
