@@ -29,4 +29,21 @@ public class NativeUiTest {
   assertTrue(contains(root,"최근 시청 1개 · 누르면 이어보기 · 길게 누르면 관리"));assertFalse(hasWeb(root));assertTrue(find(root,"기록").isSelected());
   HistoryStore reopened=new HistoryStore(controller.get().getSharedPreferences("viewer",0));assertEquals(42000,reopened.find("123").positionMs);assertEquals(1,reopened.find("123").part);
  }
+ @Test public void leavingPlayerSavesActualFileAndPosition(){
+  MainActivity a=controller.get();attachFakePlayback(a,42000,true);
+  find(a.getWindow().getDecorView(),"기록").performClick();
+  WatchHistory.Entry saved=new HistoryStore(a.getSharedPreferences("viewer",0)).find("321");assertNotNull(saved);assertEquals(1,saved.part);assertEquals(42000,saved.positionMs);assertEquals(342000,saved.elapsedMs);
+ }
+ @Test public void loadingBeforePlaybackDoesNotOverwriteEarlierPosition(){
+  MainActivity a=controller.get();HistoryStore store=org.robolectric.util.ReflectionHelpers.getField(a,"history");store.save(new WatchHistory.Entry(new ContentItem("321","demo","영상","","","",true),1,42000,600000,342000,1,false));
+  attachFakePlayback(a,0,false);find(a.getWindow().getDecorView(),"기록").performClick();
+  assertEquals(42000,new HistoryStore(a.getSharedPreferences("viewer",0)).find("321").positionMs);
+ }
+ private void attachFakePlayback(MainActivity activity,long position,boolean started){
+  androidx.media3.exoplayer.ExoPlayer fake=(androidx.media3.exoplayer.ExoPlayer)java.lang.reflect.Proxy.newProxyInstance(androidx.media3.exoplayer.ExoPlayer.class.getClassLoader(),new Class<?>[]{androidx.media3.exoplayer.ExoPlayer.class},(proxy,method,args)->{
+   switch(method.getName()){case "getCurrentMediaItemIndex":return 1;case "getCurrentPosition":return position;case "getPlaybackState":return androidx.media3.common.Player.STATE_READY;case "isPlaying":return false;default:return null;}
+  });
+  PlaybackInfo info=new PlaybackInfo();info.title="영상";info.media.add("https://cdn.example/one");info.media.add("https://cdn.example/two");info.durations.add(300000L);info.durations.add(300000L);
+  org.robolectric.util.ReflectionHelpers.setField(activity,"player",fake);org.robolectric.util.ReflectionHelpers.setField(activity,"info",info);org.robolectric.util.ReflectionHelpers.setField(activity,"current",new ContentItem("321","demo","영상","","","",true));org.robolectric.util.ReflectionHelpers.setField(activity,"historyStarted",started);
+ }
 }
