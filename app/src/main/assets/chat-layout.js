@@ -58,7 +58,7 @@
   if(!panel){removeControls();return false;}
   panel.setAttribute(attr,'');controls();return render();
  }
- window.viewerController={get state(){return {...state};}};
+ window.viewerController={get state(){return {...state};},destroy(){observer?.disconnect();clearTimeout(timer);removeControls();style?.remove();delete window.viewerController;delete window.viewerApply;}};
  window.viewerApply=(hidden,percent,position='auto',ads=true)=>{
   state={hidden,percent,position:['auto','left','right','top','bottom','floating'].includes(position)?position:'auto',ads};
   let adStyle=document.getElementById('viewer-ad-style');
@@ -68,10 +68,10 @@
   return detect();
  };
  observer=new MutationObserver(records=>{
-  if(dragging)return;
+  if(typeof document==='undefined' || dragging)return;
   const external=records.some(r=>![style,handle,grip,document.getElementById('viewer-ad-style')].includes(r.target));
   if(!external)return;
-  clearTimeout(timer);timer=setTimeout(detect,200);
+  if(!timer)timer=setTimeout(()=>{timer=null;detect();},200);
  });
  observer.observe(document.documentElement,{childList:true,subtree:true});
  window.addEventListener('resize',()=>{render();});
