@@ -44,7 +44,9 @@ public class SoopClient {
  }
  public PlaybackInfo resolve(ContentItem item)throws Exception{
   if(item.vod)return PlaybackInfo.vod(json("https://api.m.sooplive.com/station/video/a/view","nTitleNo="+encode(item.id)+"&nApiLevel=10",item.pageUrl()));
-  JSONObject response=json("https://live.sooplive.com/afreeca/player_live_api.php","bid="+encode(item.user)+"&type=live&player_type=html5&stream_type=common&quality=master",item.pageUrl());
+  // Do not pin the channel-info request to a made-up "master" preset. SOOP
+  // returns VIEWPRESET here; the chosen preset is sent only in the AID request.
+  JSONObject response=json("https://live.sooplive.com/afreeca/player_live_api.php","bid="+encode(item.user)+"&type=live&player_type=html5&stream_type=common",item.pageUrl());
   JSONObject channel=response.optJSONObject("CHANNEL");if(channel==null)throw new IOException("방송 정보를 확인할 수 없습니다");
   if(channel.optInt("RESULT",-1)!=1||channel.optString("BNO").isEmpty())throw new IOException("방송 중이 아니거나 로그인·시청 권한이 필요합니다");
   if("Y".equals(channel.optString("BPWD")))throw new IOException("비밀번호 방송은 공식 화면에서 확인하세요");
