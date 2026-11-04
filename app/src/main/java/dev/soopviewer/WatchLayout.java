@@ -11,7 +11,7 @@ public final class WatchLayout extends FrameLayout {
  public final FrameLayout video;
  public final LinearLayout chat,details;
  public final View resizeRail;
- public boolean hidden=false,immersive=false,mobilePortrait=false;
+ public boolean hidden=false,immersive=false,mobilePortrait=false,pictureInPicture=false;
  public String position="auto";
  public float fraction=.20f;
  Runnable onChanged;
@@ -48,6 +48,7 @@ public final class WatchLayout extends FrameLayout {
  private void measureExact(View v,int w,int h){v.measure(MeasureSpec.makeMeasureSpec(Math.max(0,w),MeasureSpec.EXACTLY),MeasureSpec.makeMeasureSpec(Math.max(0,h),MeasureSpec.EXACTLY));}
  @Override protected void onMeasure(int ws,int hs){
   int W=MeasureSpec.getSize(ws),H=MeasureSpec.getSize(hs);setMeasuredDimension(W,H);fraction=clamp(fraction);
+  if(pictureInPicture){details.setVisibility(GONE);measureExact(video,W,H);measureExact(chat,0,0);measureExact(resizeRail,0,0);return;}
   if(portrait()){
    int vh=Math.min(H,W*9/16);details.setVisibility(VISIBLE);details.measure(MeasureSpec.makeMeasureSpec(W,MeasureSpec.EXACTLY),MeasureSpec.makeMeasureSpec(Math.max(0,H-vh),MeasureSpec.AT_MOST));detailHeight=details.getMeasuredHeight();measureExact(video,W,vh);measureExact(chat,W,Math.max(0,H-vh-detailHeight));measureExact(resizeRail,0,0);return;
   }
@@ -56,7 +57,8 @@ public final class WatchLayout extends FrameLayout {
   measureExact(video,vw,vh);measureExact(chat,cw,ch);measureExact(resizeRail,side()?dp(18):W,side()?H:dp(18));
  }
  @Override protected void onLayout(boolean changed,int a,int b,int c,int d){
-  int W=getWidth(),H=getHeight();chat.setVisibility(hidden?GONE:VISIBLE);resizeRail.setVisibility(!hidden&&!position.equals("floating")&&!portrait()?VISIBLE:GONE);
+  int W=getWidth(),H=getHeight();chat.setVisibility(hidden||pictureInPicture?GONE:VISIBLE);resizeRail.setVisibility(!hidden&&!pictureInPicture&&!position.equals("floating")&&!portrait()?VISIBLE:GONE);
+  if(pictureInPicture){video.layout(0,0,W,H);details.layout(0,0,0,0);chat.layout(0,0,0,0);return;}
   if(portrait()){int vh=video.getMeasuredHeight();video.layout(0,0,W,vh);details.layout(0,vh,W,vh+detailHeight);chat.layout(0,vh+detailHeight,W,H);return;}
   if(hidden){video.layout(0,0,W,H);return;}int cw=chat.getMeasuredWidth(),ch=chat.getMeasuredHeight(),r=dp(9);String p=resolved();
   switch(p){

@@ -61,8 +61,8 @@ jobs:
           APK_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           APK_RUN_NUMBER: ${{ github.run_number }}
         run: |
-          apk_tag="preview-0.4.0-${APK_RUN_NUMBER}"
-          mv apk/app-debug.apk apk/soop-viewer-0.4.0.apk
-          sha256sum apk/soop-viewer-0.4.0.apk > apk/SHA256SUMS.txt
-          gh release create "$apk_tag" apk/soop-viewer-0.4.0.apk apk/SHA256SUMS.txt --target "$APK_HEAD_SHA" --prerelease --title "SOOP Viewer 0.4.0 preview ${APK_RUN_NUMBER}" --notes "Install the .apk directly. Tested build; real-device playback and 1080p availability depend on the broadcast and account."
+          apk_tag="preview-0.5.0-${APK_RUN_NUMBER}"
+          mv apk/app-debug.apk apk/soop-viewer-0.5.0.apk
+          sha256sum apk/soop-viewer-0.5.0.apk > apk/SHA256SUMS.txt
+          gh release create "$apk_tag" apk/soop-viewer-0.5.0.apk apk/SHA256SUMS.txt --target "$APK_HEAD_SHA" --prerelease --title "SOOP Viewer 0.5.0 preview ${APK_RUN_NUMBER}" --notes "Install the .apk directly. PiP support, playback tests and APK signature verified. Real-device behavior depends on Android settings and SOOP account/broadcast availability."
           gh release view "$apk_tag" --json assets --jq '.assets[] | select(.name | endswith(".apk")) | .url'
