@@ -38,6 +38,10 @@ public class SoopClient {
   String url="https://sch.sooplive.com/api.php?l=DF&m="+(vod?"vodSearch":"liveSearch")+"&c=UTF-8&w=webk&isMobile=0&onlyParent=1&szType=json&szOrder=score&szKeyword="+encode(keyword)+"&nPageNo="+page+"&nListCnt=30&tab="+(vod?"vod":"live")+"&location=total_search&isHashSearch=0&v="+(vod?"5.0":"2.0");
   return ContentItem.parse(json(url,null,"https://www.sooplive.com/"),vod);
  }
+ public List<ContentItem> searchStreamers(String keyword)throws Exception{
+  String url="https://sch.sooplive.com/api.php?m=bjSearch&v=3.0&szOrder=score&szKeyword="+encode(keyword);
+  return ContentItem.parse(json(url,null,"https://www.sooplive.com/"),false);
+ }
  public List<ContentItem> station(String user,String type,int page)throws Exception{
   if(!ServiceUrls.userId(user)||!Arrays.asList("all","review","clip","normal").contains(type))throw new IllegalArgumentException("방송국 ID를 확인하세요");
   return ContentItem.parse(json("https://chapi.sooplive.com/api/"+user+"/vods/"+type+"?page="+page+"&per_page=30&orderby=reg_date",null,ServiceUrls.station(user)),true,user);
@@ -58,7 +62,9 @@ public class SoopClient {
   String bno=channel.optString("BNO");JSONObject token=json("https://live.sooplive.com/afreeca/player_live_api.php","bid="+encode(item.user)+"&bno="+encode(bno)+"&type=aid&stream_type=common&quality="+encode(quality)+"&player_type=html5&mode=landing&from_api=0",item.pageUrl()).optJSONObject("CHANNEL");
   if(token==null||token.optString("AID").isEmpty())throw new IOException("이 화질의 재생 인증을 받지 못했습니다. 계정 권한을 확인하세요");
   String base=ServiceUrls.https(channel.optString("RMD"));if(base.isEmpty()||!ServiceUrls.official(java.net.URI.create(base).getHost()))base="https://livestream-manager.sooplive.com";
-  String cdn=channel.optString("CDN");if(cdn.contains("lg_cdn"))cdn="lg_cdn_pc_web";else if(cdn.contains("gcp_cdn"))cdn="gcp_cdn";else if(cdn.contains("aws_cf"))cdn="aws_cf";else cdn="gs_cdn_pc_web";
+  // Preserve SOOP's assigned CDN. Replacing unknown CDN values with the
+  // desktop GS endpoint can make high-resolution live playlists unavailable.
+  String cdn=channel.optString("CDN");if(cdn.isEmpty())cdn="gs_cdn_pc_web";else if(cdn.contains("lg_cdn"))cdn="lg_cdn_pc_web";
   JSONObject assigned=json(base.replaceAll("/$","")+"/broad_stream_assign.html?return_type="+encode(cdn)+"&broad_key="+encode(bno+"-common-"+quality+"-hls"),null,item.pageUrl());
   String media=ServiceUrls.https(assigned.optString("view_url"));if(media.isEmpty())throw new IOException("재생 주소를 받지 못했습니다");return HttpUrl.get(media).newBuilder().setQueryParameter("aid",token.optString("AID")).build().toString();
  }
