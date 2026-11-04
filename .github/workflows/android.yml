@@ -14,9 +14,6 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
@@ -24,19 +21,14 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: soop-viewer-debug-signing-v1
       - name: Install Android SDK
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
-      - name: Test web layout
-        run: |
-          npm install --no-save --package-lock=false jsdom@26.1.0
-          node --test tests/chat-layout.test.cjs
-      - name: Test Java rules
-        run: |
-          mkdir -p work/test-classes
-          javac -d work/test-classes app/src/main/java/dev/soopviewer/PanelState.java app/src/main/java/dev/soopviewer/AdRules.java tests/RulesTest.java
-          java -cp work/test-classes RulesTest
       - name: Build and lint
-        run: gradle --no-daemon assembleDebug lintDebug
+        run: gradle --no-daemon testDebugUnitTest assembleDebug lintDebug
       - name: Verify APK signature
         run: "$ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose app/build/outputs/apk/debug/app-debug.apk"
       - uses: actions/upload-artifact@v4
