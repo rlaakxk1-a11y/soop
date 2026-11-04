@@ -39,7 +39,7 @@ public class SoopClient {
  }
  public List<ContentItem> station(String user,String type,int page)throws Exception{
   if(!ServiceUrls.userId(user)||!Arrays.asList("all","review","clip","normal").contains(type))throw new IllegalArgumentException("방송국 ID를 확인하세요");
-  return ContentItem.parse(json("https://chapi.sooplive.com/api/"+user+"/vods/"+type+"?page="+page+"&per_page=30&orderby=reg_date",null,ServiceUrls.station(user)),true);
+  return ContentItem.parse(json("https://chapi.sooplive.com/api/"+user+"/vods/"+type+"?page="+page+"&per_page=30&orderby=reg_date",null,ServiceUrls.station(user)),true,user);
  }
  public PlaybackInfo resolve(ContentItem item)throws Exception{
   if(item.vod)return PlaybackInfo.vod(json("https://api.m.sooplive.com/station/video/a/view","nTitleNo="+encode(item.id)+"&nApiLevel=10",item.pageUrl()));
@@ -50,7 +50,7 @@ public class SoopClient {
   String bno=channel.optString("BNO");JSONObject token=json("https://live.sooplive.com/afreeca/player_live_api.php","bid="+encode(item.user)+"&bno="+encode(bno)+"&type=aid&stream_type=common&quality=master&player_type=html5",item.pageUrl()).optJSONObject("CHANNEL");
   if(token==null||token.optString("AID").isEmpty())throw new IOException("재생 인증에 실패했습니다. 로그인·성인 인증·시청 권한을 확인하세요");
   String base=ServiceUrls.https(channel.optString("RMD"));if(base.isEmpty()||!ServiceUrls.official(java.net.URI.create(base).getHost()))base="https://livestream-manager.sooplive.com";
-  String cdn=channel.optString("CDN");if(cdn.contains("gs_cdn"))cdn="gs_cdn_mobile_web";else if(cdn.contains("lg_cdn"))cdn="lg_cdn_mobile_web";if(cdn.isEmpty())cdn="gcp_cdn";
+  String cdn=channel.optString("CDN");if(cdn.contains("gs_cdn"))cdn="gs_cdn_mobile_web";else if(cdn.contains("lg_cdn"))cdn="lg_cdn_mobile_web";else if(cdn.contains("gcp_cdn"))cdn="gcp_cdn";else if(cdn.contains("aws_cf"))cdn="aws_cf";else if(cdn.contains("azure_cdn"))cdn="azure_cdn";else cdn="gcp_cdn";
   JSONObject assigned=json(base.replaceAll("/$","")+"/broad_stream_assign.html?return_type="+encode(cdn)+"&broad_key="+encode(bno+"-common-master-hls"),null,item.pageUrl());
   String media=ServiceUrls.https(assigned.optString("view_url"));if(media.isEmpty())throw new IOException("재생 주소를 받지 못했습니다");
   PlaybackInfo info=new PlaybackInfo();info.title=channel.optString("TITLE",item.title);info.user=item.user;info.live=channel;

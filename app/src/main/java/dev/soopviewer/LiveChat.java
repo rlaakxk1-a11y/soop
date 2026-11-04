@@ -17,10 +17,10 @@ public final class LiveChat extends WebSocketListener {
   int port=channel.optInt("CHPT")+1;if(room.isEmpty()||!ServiceUrls.official(host)||port<2||port>65535)throw new Exception("채팅 연결 정보가 없습니다");
   socket=client.http.newWebSocket(new Request.Builder().url("wss://"+host+":"+port+"/Websocket/"+user).header("Origin","https://play.sooplive.com").header("Sec-WebSocket-Protocol","chat").build(),this);
  }
- @Override public void onOpen(WebSocket ws,Response response){if(stopped){ws.close(1000,"Closed");return;}ws.send(ChatParser.packet(1,"\f\f\f16\f"));main.postDelayed(()->{if(!stopped){ws.send(ChatParser.packet(2,"\f"+room+"\f\f\f\f\f"));status.accept("실시간 채팅 · 읽기 전용");heartbeat.run();}},200);}
+ @Override public void onOpen(WebSocket ws,Response response){if(stopped){ws.close(1000,"Closed");return;}ws.send(ChatParser.packet(1,"\f\f\f16\f"));main.postDelayed(()->{if(!stopped){ws.send(ChatParser.packet(2,"\f"+room+"\f\f\f\f\f"));status.accept("채팅 연결 대기 · 읽기 전용");heartbeat.run();}},200);}
  @Override public void onMessage(WebSocket ws,String text){deliver(text.getBytes(java.nio.charset.StandardCharsets.UTF_8));}
  @Override public void onMessage(WebSocket ws,ByteString bytes){deliver(bytes.toByteArray());}
- private void deliver(byte[] data){List<ChatMessage> batch=ChatParser.packets(data);if(!batch.isEmpty())main.post(()->{if(!stopped)messages.accept(batch);});}
+ private void deliver(byte[] data){List<ChatMessage> batch=ChatParser.packets(data);if(!batch.isEmpty())main.post(()->{if(!stopped){status.accept("실시간 채팅 · 읽기 전용");messages.accept(batch);}});}
  @Override public void onFailure(WebSocket ws,Throwable t,Response response){main.post(()->{if(!stopped)status.accept("채팅 연결 실패 · 시청 화면을 다시 열어주세요");});}
  @Override public void onClosed(WebSocket ws,int code,String reason){main.post(()->{if(!stopped)status.accept("채팅 연결 종료");});}
  public void close(){stopped=true;main.removeCallbacks(heartbeat);if(socket!=null)socket.cancel();}
