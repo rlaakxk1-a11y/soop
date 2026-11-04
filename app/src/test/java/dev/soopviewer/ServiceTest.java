@@ -28,4 +28,5 @@ public class ServiceTest {
  @Test public void stationCanSupplyMissingBroadcasterId()throws Exception {assertEquals("demo",ContentItem.parse(new JSONObject("{data:[{title_no:123,title_name:'영상'}]}"),true,"demo").get(0).user);}
  @Test public void stationVodThumbnailAliasesAreRead()throws Exception {ContentItem row=ContentItem.parse(new JSONObject("{data:[{title_no:123,title_name:'영상',title_img:'//videoimg.sooplive.com/thumb.jpg'}]}"),true,"demo").get(0);assertEquals("https://videoimg.sooplive.com/thumb.jpg",row.thumb);}
  @Test public void vodDetailThumbnailIsAvailableForListFallback()throws Exception {PlaybackInfo p=PlaybackInfo.vod(new JSONObject("{data:{title:'영상',bj_id:'demo',thumb:'//videoimg.sooplive.com/thumb.jpg',files:[{file:'https://cdn.test/a.m3u8'}]}}"));assertEquals("https://videoimg.sooplive.com/thumb.jpg",p.thumbnail);}
+ @Test public void durationFormatsHoursAndMilliseconds()throws Exception {assertEquals("2:03:04",ContentItem.duration(new JSONObject("{duration:7384}")));assertEquals("2:03:04",ContentItem.duration(new JSONObject("{total_file_duration:7384000}")));assertEquals("",ContentItem.duration(new JSONObject("{}")));}
 }

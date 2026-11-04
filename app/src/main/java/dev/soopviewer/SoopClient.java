@@ -58,7 +58,7 @@ public class SoopClient {
   // preset list. Channel-only requests can otherwise expose just 540p.
   if(!item.id.equals(channel.optString("BNO"))){JSONObject detailed=json("https://live.sooplive.com/afreeca/player_live_api.php","bid="+encode(item.user)+"&bno="+encode(channel.optString("BNO"))+"&type=live&player_type=html5&stream_type=common",item.pageUrl()).optJSONObject("CHANNEL");if(detailed!=null&&detailed.optInt("RESULT",-1)==1)channel=detailed;}
   if("Y".equals(channel.optString("BPWD")))throw new IOException("비밀번호 방송은 공식 화면에서 확인하세요");
-  PlaybackInfo info=new PlaybackInfo();info.title=channel.optString("TITLE",item.title);info.user=item.user;info.live=channel;info.qualities.addAll(LiveQuality.offered(channel));info.selectedQuality=LiveQuality.preferred(info.qualities);
+  PlaybackInfo info=new PlaybackInfo();info.title=channel.optString("TITLE",item.title);info.user=item.user;info.live=channel;info.qualities.addAll(LiveQuality.offered(channel));info.selectedQuality="master";
   info.media.add(liveStream(item,channel,info.selectedQuality));return info;
  }
  public String liveStream(ContentItem item,JSONObject channel,String quality)throws Exception{
