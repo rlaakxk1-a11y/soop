@@ -42,3 +42,27 @@ jobs:
         with:
           name: build-reports
           path: app/build/reports/
+  publish-apk:
+    needs: build
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: soop-viewer-apk
+          path: apk
+      - name: Publish directly installable APK
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          APK_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          APK_RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          apk_tag="preview-0.4.0-${APK_RUN_NUMBER}"
+          mv apk/app-debug.apk apk/soop-viewer-0.4.0.apk
+          sha256sum apk/soop-viewer-0.4.0.apk > apk/SHA256SUMS.txt
+          gh release create "$apk_tag" apk/soop-viewer-0.4.0.apk apk/SHA256SUMS.txt --target "$APK_HEAD_SHA" --prerelease --title "SOOP Viewer 0.4.0 preview ${APK_RUN_NUMBER}" --notes "Install the .apk directly. Tested build; real-device playback and 1080p availability depend on the broadcast and account."
+          gh release view "$apk_tag" --json assets --jq '.assets[] | select(.name | endswith(".apk")) | .url'

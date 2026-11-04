@@ -24,6 +24,7 @@ public class SoopClient {
   if(ServiceUrls.https(url).isEmpty())throw new IOException("HTTPS 주소만 사용할 수 있습니다");
   Request.Builder b=new Request.Builder().url(url).header("User-Agent","Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36");
   if(referer!=null)b.header("Referer",referer);
+  String host=java.net.URI.create(url).getHost();if(ServiceUrls.official(host)&&(host.startsWith("live.")||host.startsWith("livestream-manager."))){b.header("User-Agent","Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");b.header("Origin","https://play.sooplive.com");}
   if(form!=null)b.post(RequestBody.create(form,MediaType.get("application/x-www-form-urlencoded; charset=UTF-8")));
   try(Response r=http.newCall(b.build()).execute()){
    if(!r.isSuccessful())throw new IOException("서비스 응답 오류 (HTTP "+r.code()+")");if(r.body()==null)throw new IOException("빈 응답입니다");
@@ -47,13 +48,17 @@ public class SoopClient {
   JSONObject channel=response.optJSONObject("CHANNEL");if(channel==null)throw new IOException("방송 정보를 확인할 수 없습니다");
   if(channel.optInt("RESULT",-1)!=1||channel.optString("BNO").isEmpty())throw new IOException("방송 중이 아니거나 로그인·시청 권한이 필요합니다");
   if("Y".equals(channel.optString("BPWD")))throw new IOException("비밀번호 방송은 공식 화면에서 확인하세요");
-  String bno=channel.optString("BNO");JSONObject token=json("https://live.sooplive.com/afreeca/player_live_api.php","bid="+encode(item.user)+"&bno="+encode(bno)+"&type=aid&stream_type=common&quality=master&player_type=html5",item.pageUrl()).optJSONObject("CHANNEL");
-  if(token==null||token.optString("AID").isEmpty())throw new IOException("재생 인증에 실패했습니다. 로그인·성인 인증·시청 권한을 확인하세요");
-  String base=ServiceUrls.https(channel.optString("RMD"));if(base.isEmpty()||!ServiceUrls.official(java.net.URI.create(base).getHost()))base="https://livestream-manager.sooplive.com";
-  String cdn=channel.optString("CDN");if(cdn.contains("gs_cdn"))cdn="gs_cdn_mobile_web";else if(cdn.contains("lg_cdn"))cdn="lg_cdn_mobile_web";else if(cdn.contains("gcp_cdn"))cdn="gcp_cdn";else if(cdn.contains("aws_cf"))cdn="aws_cf";else if(cdn.contains("azure_cdn"))cdn="azure_cdn";else cdn="gcp_cdn";
-  JSONObject assigned=json(base.replaceAll("/$","")+"/broad_stream_assign.html?return_type="+encode(cdn)+"&broad_key="+encode(bno+"-common-master-hls"),null,item.pageUrl());
-  String media=ServiceUrls.https(assigned.optString("view_url"));if(media.isEmpty())throw new IOException("재생 주소를 받지 못했습니다");
-  PlaybackInfo info=new PlaybackInfo();info.title=channel.optString("TITLE",item.title);info.user=item.user;info.live=channel;
-  info.media.add(media+(media.contains("?")?"&":"?")+"aid="+encode(token.optString("AID")));return info;
+  PlaybackInfo info=new PlaybackInfo();info.title=channel.optString("TITLE",item.title);info.user=item.user;info.live=channel;info.qualities.addAll(LiveQuality.offered(channel));info.selectedQuality=LiveQuality.preferred(info.qualities);
+  try{info.media.add(liveStream(item,channel,info.selectedQuality));}catch(Exception first){if(info.selectedQuality.equals("master"))throw first;info.selectedQuality="master";info.media.add(liveStream(item,channel,"master"));}return info;
  }
+ public String liveStream(ContentItem item,JSONObject channel,String quality)throws Exception{
+  if(!quality.matches("[A-Za-z0-9_\\-]+"))throw new IllegalArgumentException("화질 정보가 올바르지 않습니다");
+  String bno=channel.optString("BNO");JSONObject token=json("https://live.sooplive.com/afreeca/player_live_api.php","bid="+encode(item.user)+"&bno="+encode(bno)+"&type=aid&stream_type=common&quality="+encode(quality)+"&player_type=html5&mode=landing&from_api=0",item.pageUrl()).optJSONObject("CHANNEL");
+  if(token==null||token.optString("AID").isEmpty())throw new IOException("이 화질의 재생 인증을 받지 못했습니다. 계정 권한을 확인하세요");
+  String base=ServiceUrls.https(channel.optString("RMD"));if(base.isEmpty()||!ServiceUrls.official(java.net.URI.create(base).getHost()))base="https://livestream-manager.sooplive.com";
+  String cdn=channel.optString("CDN");if(cdn.contains("lg_cdn"))cdn="lg_cdn_pc_web";else if(cdn.contains("gcp_cdn"))cdn="gcp_cdn";else if(cdn.contains("aws_cf"))cdn="aws_cf";else cdn="gs_cdn_pc_web";
+  JSONObject assigned=json(base.replaceAll("/$","")+"/broad_stream_assign.html?return_type="+encode(cdn)+"&broad_key="+encode(bno+"-common-"+quality+"-hls"),null,item.pageUrl());
+  String media=ServiceUrls.https(assigned.optString("view_url"));if(media.isEmpty())throw new IOException("재생 주소를 받지 못했습니다");return HttpUrl.get(media).newBuilder().setQueryParameter("aid",token.optString("AID")).build().toString();
+ }
+
 }

@@ -46,4 +46,19 @@ public class NativeUiTest {
   PlaybackInfo info=new PlaybackInfo();info.title="영상";info.media.add("https://cdn.example/one");info.media.add("https://cdn.example/two");info.durations.add(300000L);info.durations.add(300000L);
   org.robolectric.util.ReflectionHelpers.setField(activity,"player",fake);org.robolectric.util.ReflectionHelpers.setField(activity,"info",info);org.robolectric.util.ReflectionHelpers.setField(activity,"current",new ContentItem("321","demo","영상","","","",true));org.robolectric.util.ReflectionHelpers.setField(activity,"historyStarted",started);
  }
+ @Test public void immersiveWatchHasNoReservedTitleToolbarOrSystemInsets(){
+  MainActivity a=controller.get();ContentItem item=new ContentItem("demo","demo","영상 제목","닉","","",false);
+  org.robolectric.util.ReflectionHelpers.callInstanceMethod(a,"buildWatchUi",org.robolectric.util.ReflectionHelpers.ClassParameter.from(ContentItem.class,item));
+  org.robolectric.util.ReflectionHelpers.callInstanceMethod(a,"fullscreen");WatchLayout layout=org.robolectric.util.ReflectionHelpers.getField(a,"watch");measureWatch(layout,1000,600);
+  assertEquals(0,layout.video.getTop());assertEquals(600,layout.video.getHeight());assertEquals(800,layout.video.getWidth());assertEquals(View.GONE,layout.details.getVisibility());
+  for(String field:new String[]{"header","nav","playerChrome","chatStatus"}){View v=org.robolectric.util.ReflectionHelpers.getField(a,field);assertEquals(field,View.GONE,v.getVisibility());}
+  assertTrue((a.getWindow().getAttributes().flags&WindowManager.LayoutParams.FLAG_FULLSCREEN)!=0);View root=org.robolectric.util.ReflectionHelpers.getField(a,"root");assertEquals(0,root.getPaddingTop());assertEquals(0,root.getPaddingBottom());
+  layout.hidden=true;layout.requestLayout();measureWatch(layout,1000,600);assertEquals(1000,layout.video.getWidth());assertEquals(600,layout.video.getHeight());
+ }
+ @Test public void dockedChatBoundaryDragShrinksToEightPercentWithoutFloating(){WatchLayout layout=new WatchLayout(controller.get());layout.immersive=true;layout.position="right";layout.fraction=.20f;measureWatch(layout,1000,600);
+  View rail=layout.resizeRail;long time=android.os.SystemClock.uptimeMillis();android.view.MotionEvent down=android.view.MotionEvent.obtain(time,time,MotionEvent.ACTION_DOWN,0,100,0),move=android.view.MotionEvent.obtain(time,time+20,MotionEvent.ACTION_MOVE,180,100,0),up=android.view.MotionEvent.obtain(time,time+40,MotionEvent.ACTION_UP,180,100,0);rail.dispatchTouchEvent(down);rail.dispatchTouchEvent(move);rail.dispatchTouchEvent(up);down.recycle();move.recycle();up.recycle();measureWatch(layout,1000,600);
+  assertEquals("right",layout.position);assertEquals(80,layout.chat.getWidth());assertEquals(920,layout.video.getWidth());assertEquals(0,layout.video.getTop());
+ }
+ @Test public void portraitWatchKeepsSixteenNineVideoAboveDetailsAndChat(){WatchLayout layout=new WatchLayout(controller.get());layout.mobilePortrait=true;TextView title=new TextView(controller.get());title.setText("영상 제목");layout.details.addView(title);measureWatch(layout,400,850);assertEquals(225,layout.video.getHeight());assertEquals(225,layout.details.getTop());assertEquals(layout.details.getBottom(),layout.chat.getTop());assertEquals(850,layout.chat.getBottom());}
+ private void measureWatch(WatchLayout layout,int width,int height){layout.measure(View.MeasureSpec.makeMeasureSpec(width,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(height,View.MeasureSpec.EXACTLY));layout.layout(0,0,width,height);}
 }

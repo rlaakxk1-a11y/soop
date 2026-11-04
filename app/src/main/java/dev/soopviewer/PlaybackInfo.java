@@ -3,7 +3,7 @@ import org.json.*;
 import java.util.*;
 public final class PlaybackInfo {
  public final List<String> media=new ArrayList<>(),chat=new ArrayList<>();
- public final List<Long> durations=new ArrayList<>();public JSONObject live;
+ public final List<Long> durations=new ArrayList<>();public JSONObject live;public final List<LiveQuality> qualities=new ArrayList<>();public String selectedQuality="master";
  public String title="",user="";public int chatSeconds=300;
  public static PlaybackInfo vod(JSONObject response)throws Exception{
   JSONObject d=response.optJSONObject("data");if(d==null)throw new Exception("다시보기 정보를 가져오지 못했습니다");
