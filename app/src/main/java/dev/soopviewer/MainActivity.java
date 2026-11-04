@@ -46,7 +46,7 @@ public class MainActivity extends Activity {
   button(tabs,"검색", this::search);
   button(tabs,"메뉴", this::menu);
   LinearLayout controls = new LinearLayout(this); controls.setGravity(Gravity.CENTER_VERTICAL); root.addView(controls);
-  toggle = button(controls,hidden ? "채팅 표시" : "채팅 숨김", () -> { hidden = !hidden; toggle.setText(hidden ? "채팅 표시" : "채팅 숨김"); persist(); apply(); });
+  toggle = button(controls,hidden ? "채팅 표시" : "채팅 숨김", this::toggleChat);
   SeekBar slider = new SeekBar(this); slider.setMax(50); slider.setProgress(percent-15); slider.setContentDescription("채팅 크기 15에서 65퍼센트");
   controls.addView(slider,new LinearLayout.LayoutParams(0,52,1));
   slider.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener(){
@@ -77,6 +77,7 @@ public class MainActivity extends Activity {
  }
  private Button button(LinearLayout row,String text,Runnable action){Button b=new Button(this);b.setText(text);b.setTextSize(12);row.addView(b,new LinearLayout.LayoutParams(0,-2,1));b.setOnClickListener(v->action.run());return b;}
  private static byte[] readBytes(java.io.InputStream in) throws java.io.IOException { java.io.ByteArrayOutputStream out=new java.io.ByteArrayOutputStream(); byte[] buffer=new byte[8192]; int count; while((count=in.read(buffer))!=-1)out.write(buffer,0,count); return out.toByteArray(); }
+ private void toggleChat(){web.evaluateJavascript("window.viewerController ? window.viewerController.state.position : null", value->{if("\"floating\"".equals(value))position="floating";hidden=!hidden;toggle.setText(hidden?"채팅 표시":"채팅 숨김");persist();apply();});}
  private void persist(){prefs.edit().putBoolean("hidden",hidden).putInt("percent",percent).putString("position",position).putBoolean("ads",ads).apply();}
  private void open(String url){web.loadUrl(url);status.setText("공식 웹페이지 연결 중…");}
  private void demo(){try(java.io.InputStream in=getAssets().open("demo.html")){web.loadDataWithBaseURL("https://demo.invalid/",new String(readBytes(in),StandardCharsets.UTF_8),"text/html","UTF-8",null);}catch(Exception e){status.setText("데모 로드 실패");}}

@@ -39,3 +39,15 @@ test('floating geometry is constrained to viewport',()=>{
  delete w.viewerController;w.eval(script);w.viewerApply(false,35,'floating');
  const css=w.document.getElementById('viewer-chat-style').textContent;assert.match(css,/left:0px/);assert.match(css,/top:0px/);assert.match(css,/width:1024px/);d.window.close();
 });
+test('drag and resize update geometry and save on pointer release',()=>{
+ const d=fixture();const w=d.window;w.viewerApply(false,35);
+ const chat=w.document.querySelector('aside');chat.getBoundingClientRect=()=>({left:10,top:20,width:300,height:200});
+ const handle=w.document.getElementById('viewer-drag');handle.setPointerCapture=()=>{};
+ function pointer(el,type,x,y){const e=new w.Event(type);Object.assign(e,{clientX:x,clientY:y,pointerId:1});el.dispatchEvent(e);}
+ pointer(handle,'pointerdown',10,20);pointer(handle,'pointermove',110,120);pointer(handle,'pointerup',110,120);
+ assert.equal(w.viewerController.state.position,'floating');
+ assert.equal(JSON.parse(w.localStorage.getItem('viewer.geometry')).x,110);
+ const grip=w.document.getElementById('viewer-resize');grip.setPointerCapture=()=>{};
+ pointer(grip,'pointerdown',0,0);pointer(grip,'pointermove',100,50);pointer(grip,'pointerup',100,50);
+ assert.equal(JSON.parse(w.localStorage.getItem('viewer.geometry')).w,400);d.window.close();
+});

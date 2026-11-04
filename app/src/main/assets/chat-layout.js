@@ -6,6 +6,7 @@
  let panel, style, handle, grip, observer, timer, dragging=false;
  let geometry;
  try {geometry=JSON.parse(localStorage.getItem('viewer.geometry') || 'null');} catch (_) {}
+ if(geometry && ![geometry.x,geometry.y,geometry.w,geometry.h].every(Number.isFinite))geometry=null;
  const clamp=(n,min,max)=>Math.max(min,Math.min(max,n));
  function save(){try{localStorage.setItem('viewer.geometry',JSON.stringify(geometry));}catch(_) {}}
  function removeControls(){handle?.remove();grip?.remove();handle=grip=null;}
