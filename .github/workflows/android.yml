@@ -2,6 +2,9 @@ name: Android APK
 on:
   pull_request:
   workflow_dispatch:
+concurrency:
+  group: soop-viewer-android-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
 permissions:
   contents: read
 jobs:
@@ -24,13 +27,25 @@ jobs:
       - uses: actions/cache@v4
         with:
           path: ~/.android/debug.keystore
-          key: soop-viewer-debug-signing-v1
+          key: soop-viewer-debug-signing-v2
+      - name: Create stable debug signing key when missing
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.android"
+          key_file="$HOME/.android/debug.keystore"
+          if [ ! -s "$key_file" ]; then
+            keytool -genkeypair -v -storetype JKS -keystore "$key_file" \
+              -storepass android -keypass android -alias androiddebugkey \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Android Debug,O=Android,C=US"
+          fi
+          keytool -list -keystore "$key_file" -storepass android -alias androiddebugkey
       - name: Install Android SDK
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
       - name: Build and lint
         run: gradle --no-daemon testDebugUnitTest assembleDebug lintDebug
       - name: Verify APK signature
-        run: "$ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose app/build/outputs/apk/debug/app-debug.apk"
+        run: "$ANDROID_HOME/build-tools/35.0.0/apksigner verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk"
       - uses: actions/upload-artifact@v4
         with:
           name: soop-viewer-apk
@@ -61,8 +76,8 @@ jobs:
           APK_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           APK_RUN_NUMBER: ${{ github.run_number }}
         run: |
-          apk_tag="preview-0.5.0-${APK_RUN_NUMBER}"
-          mv apk/app-debug.apk apk/soop-viewer-0.5.0.apk
-          sha256sum apk/soop-viewer-0.5.0.apk > apk/SHA256SUMS.txt
-          gh release create "$apk_tag" apk/soop-viewer-0.5.0.apk apk/SHA256SUMS.txt --target "$APK_HEAD_SHA" --prerelease --title "SOOP Viewer 0.5.0 preview ${APK_RUN_NUMBER}" --notes "Install the .apk directly. PiP support, playback tests and APK signature verified. Real-device behavior depends on Android settings and SOOP account/broadcast availability."
+          apk_tag="preview-0.5.1-${APK_RUN_NUMBER}"
+          mv apk/app-debug.apk apk/soop-viewer-0.5.1.apk
+          sha256sum apk/soop-viewer-0.5.1.apk > apk/SHA256SUMS.txt
+          gh release create "$apk_tag" apk/soop-viewer-0.5.1.apk apk/SHA256SUMS.txt --target "$APK_HEAD_SHA" --prerelease --title "SOOP Viewer 0.5.1 preview ${APK_RUN_NUMBER}" --notes "Direct-install APK signed with the retained project debug key. Build verifies the certificate fingerprint to support future in-place updates."
           gh release view "$apk_tag" --json assets --jq '.assets[] | select(.name | endswith(".apk")) | .url'
