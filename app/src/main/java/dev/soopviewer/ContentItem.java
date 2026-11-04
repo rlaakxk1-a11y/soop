@@ -16,7 +16,12 @@ public final class ContentItem {
    String user=value(o,"user_id","bj_id","writer_id");if(user.isEmpty())user=fallbackUser;String id=value(o,"title_no","nTitleNo","vod_id");String broadcast=value(o,"broad_no","broadNo","bno","BNO");
    if(!ServiceUrls.userId(user)||vod&&!id.matches("[0-9]+"))continue;
    String nick=value(o,"user_nick","writer_nick","nick_name"),title=value(o,"broad_title","title_name","title");if(title.isEmpty())title=nick;
-   items.add(new ContentItem(vod?id:(broadcast.isEmpty()?user:broadcast),user,title,nick,ServiceUrls.https(value(o,"broad_thumb","thumbnail","thumb","broad_img","thumb_url")),value(o,"total_view_cnt","view_cnt","current_view_cnt","view_count"),vod));
+   // SOOP's station API has returned several image key names over time. Some
+   // list responses omit the thumbnail entirely; the UI then resolves it from
+   // the canonical VOD detail response.
+   String thumbnail=value(o,"broad_thumb","thumbnail","thumb","broad_img","thumb_url","title_thumb","title_thumbnail","title_image","title_img","list_img","img");
+   JSONObject nested=o.optJSONObject("thumbnail");if(thumbnail.isEmpty()&&nested!=null)thumbnail=value(nested,"url","src");
+   items.add(new ContentItem(vod?id:(broadcast.isEmpty()?user:broadcast),user,title,nick,ServiceUrls.https(thumbnail),value(o,"total_view_cnt","view_cnt","current_view_cnt","view_count"),vod));
   }return items;
  }
  public String pageUrl(){return vod?"https://vod.sooplive.com/player/"+id:"https://play.sooplive.com/"+user;}
