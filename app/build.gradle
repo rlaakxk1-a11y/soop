@@ -30,3 +30,14 @@ if (stableSigningKey) {
  }
  android.buildTypes.getByName('debug').signingConfig = android.signingConfigs.getByName('stableDebug')
 }
+
+// Refuse installable debug builds without the retained CI signing key.
+// Unit tests and lint can still run without a key.
+tasks.configureEach { task ->
+ if (task.name == 'validateSigningDebug') {
+  task.doFirst {
+   if (!stableSigningKey || !file(stableSigningKey).isFile()) {
+    throw new GradleException('SOOP_DEBUG_KEYSTORE must point to the retained project signing key; generating a new key is prohibited.')
+   }
+  }
+}

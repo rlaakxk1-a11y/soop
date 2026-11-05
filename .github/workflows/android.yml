@@ -24,22 +24,22 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - uses: actions/cache@v4
+      - uses: actions/cache/restore@v4
+        id: signing-cache
         with:
           path: ~/.android/debug.keystore
           key: soop-viewer-debug-signing-v2
-      - name: Create stable debug signing key when missing
+      - name: Require existing update signing key
         shell: bash
         run: |
-          mkdir -p "$HOME/.android"
           key_file="$HOME/.android/debug.keystore"
-          if [ ! -s "$key_file" ]; then
-            keytool -genkeypair -v -storetype JKS -keystore "$key_file" \
-              -storepass android -keypass android -alias androiddebugkey \
-              -keyalg RSA -keysize 2048 -validity 10000 \
-              -dname "CN=Android Debug,O=Android,C=US"
+          if [ "${{ steps.signing-cache.outputs.cache-hit }}" != "true" ] || [ ! -s "$key_file" ]; then
+            echo "::error::Existing signing cache is missing. Restore soop-viewer-debug-signing-v2; do not generate a replacement key."
+            exit 1
           fi
-          keytool -list -keystore "$key_file" -storepass android -alias androiddebugkey
+          expected_fingerprint="9810f69eebd819e4ba703f5953527789717bf570be043bb2c85c9cdee669f54f"
+          key_fingerprint="$(keytool -exportcert -keystore "$key_file" -storepass android -alias androiddebugkey | sha256sum | cut -d ' ' -f 1)"
+          test "$key_fingerprint" = "$expected_fingerprint" || { echo "::error::Cached key does not match the supplied 0.7.0 APK."; exit 1; }
           echo "SOOP_DEBUG_KEYSTORE=$key_file" >> "$GITHUB_ENV"
       - name: Install Android SDK
         run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
@@ -48,7 +48,7 @@ jobs:
       - name: Verify APK signature
         run: |
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk
-          key_fingerprint="$(keytool -list -keystore "$SOOP_DEBUG_KEYSTORE" -storepass android -alias androiddebugkey | sed -n 's/^Certificate fingerprint (SHA-256): //p' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          key_fingerprint="$(keytool -exportcert -keystore "$SOOP_DEBUG_KEYSTORE" -storepass android -alias androiddebugkey | sha256sum | cut -d ' ' -f 1)"
           apk_fingerprint="$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
           test -n "$key_fingerprint" && test "$key_fingerprint" = "$apk_fingerprint"
       - uses: actions/upload-artifact@v4
