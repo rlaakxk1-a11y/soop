@@ -1,0 +1,88 @@
+name: Android APK
+on:
+  pull_request:
+  workflow_dispatch:
+concurrency:
+  group: soop-viewer-android-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: false
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - uses: actions/cache/restore@v4
+        id: signing-cache
+        with:
+          path: ~/.android/debug.keystore
+          key: soop-viewer-debug-signing-v2
+      - name: Require existing update signing key
+        shell: bash
+        run: |
+          key_file="$HOME/.android/debug.keystore"
+          if [ "${{ steps.signing-cache.outputs.cache-hit }}" != "true" ] || [ ! -s "$key_file" ]; then
+            echo "::error::Existing signing cache is missing. Restore soop-viewer-debug-signing-v2; do not generate a replacement key."
+            exit 1
+          fi
+          expected_fingerprint="9810f69eebd819e4ba703f5953527789717bf570be043bb2c85c9cdee669f54f"
+          key_fingerprint="$(keytool -exportcert -keystore "$key_file" -storepass android -alias androiddebugkey | sha256sum | cut -d ' ' -f 1)"
+          test "$key_fingerprint" = "$expected_fingerprint" || { echo "::error::Cached key does not match the supplied 0.7.0 APK."; exit 1; }
+          echo "SOOP_DEBUG_KEYSTORE=$key_file" >> "$GITHUB_ENV"
+      - name: Install Android SDK
+        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Build and lint
+        run: gradle --no-daemon testDebugUnitTest assembleDebug lintDebug
+      - name: Verify APK signature
+        run: |
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk
+          key_fingerprint="$(keytool -exportcert -keystore "$SOOP_DEBUG_KEYSTORE" -storepass android -alias androiddebugkey | sha256sum | cut -d ' ' -f 1)"
+          apk_fingerprint="$("$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --print-certs app/build/outputs/apk/debug/app-debug.apk | sed -n 's/^Signer #1 certificate SHA-256 digest: //p' | tr -d ':' | tr '[:upper:]' '[:lower:]')"
+          test -n "$key_fingerprint" && test "$key_fingerprint" = "$apk_fingerprint"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: soop-viewer-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: build-reports
+          path: app/build/reports/
+  publish-apk:
+    needs: build
+    if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: soop-viewer-apk
+          path: apk
+      - name: Publish directly installable APK
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          APK_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          APK_RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          apk_tag="preview-0.8.7-${APK_RUN_NUMBER}"
+          mv apk/app-debug.apk apk/soop-viewer-0.8.7.apk
+          sha256sum apk/soop-viewer-0.8.7.apk > apk/SHA256SUMS.txt
+          gh release create "$apk_tag" apk/soop-viewer-0.8.7.apk apk/SHA256SUMS.txt --target "$APK_HEAD_SHA" --prerelease --title "SOOP Viewer 0.8.7 preview ${APK_RUN_NUMBER}" --notes "Direct-install APK signed with the retained project debug key. Build verifies the certificate fingerprint to support future in-place updates."
+          gh release view "$apk_tag" --json assets --jq '.assets[] | select(.name | endswith(".apk")) | .url'
