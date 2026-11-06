@@ -59,6 +59,7 @@ final class SessionCookies {
   };
   if(Looper.myLooper()==Looper.getMainLooper())apply.run();else{main.post(apply);try{if(!applied.await(10,TimeUnit.SECONDS)||!accepted.get())throw new IllegalStateException("로그인 쿠키 저장에 실패했습니다");}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}}
  }
+ void close(){epoch++;enabled=false;}
  void clear(){epoch++;enabled=false;synchronized(nativeCookies){nativeCookies.clear();}prefs.edit().clear().commit();}
  private static final class AndroidVault implements Vault{
   private javax.crypto.SecretKey key()throws Exception{KeyStore store=KeyStore.getInstance("AndroidKeyStore");store.load(null);String alias="soop.session.aes.v1";if(store.containsAlias(alias))return (javax.crypto.SecretKey)store.getKey(alias,null);KeyGenerator generator=KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES,"AndroidKeyStore");generator.init(new KeyGenParameterSpec.Builder(alias,KeyProperties.PURPOSE_ENCRYPT|KeyProperties.PURPOSE_DECRYPT).setBlockModes(KeyProperties.BLOCK_MODE_GCM).setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE).build());return generator.generateKey();}

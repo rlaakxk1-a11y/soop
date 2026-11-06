@@ -368,5 +368,5 @@ public class MainActivity extends AppCompatActivity {
  @Override public void onPause(){if(holdSpeed!=null)holdSpeed.stop();if(vodPreview!=null)vodPreview.hide();savePlayback();if(player!=null&&!pipMode&&!pipRequested&&(Build.VERSION.SDK_INT<24||!isInPictureInPictureMode())){resumePlay=player.isPlaying();player.pause();}if(web!=null)web.onPause();if(sessions!=null)sessions.checkpoint();CookieManager.getInstance().flush();super.onPause();}
  @Override public void onResume(){super.onResume();if(Build.VERSION.SDK_INT>=26&&!isInPictureInPictureMode()){pipRequested=false;pipMode=false;restorePipUi();}if(web!=null)web.onResume();if(player!=null&&resumePlay){player.play();resumePlay=false;}}
  @Override public void onStop(){if(player!=null&&!pipMode&&!isInPictureInPictureMode()){resumePlay=player.isPlaying()||resumePlay;player.pause();pipRequested=false;}super.onStop();}
- @Override public void onDestroy(){generation++;releaseWatch();closeWeb();io.shutdownNow();super.onDestroy();}
+ @Override public void onDestroy(){generation++;releaseWatch();closeWeb();if(sessions!=null){sessions.checkpoint();sessions.close();}api.http.dispatcher().cancelAll();io.shutdownNow();super.onDestroy();}
 }
