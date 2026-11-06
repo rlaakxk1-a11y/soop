@@ -15,4 +15,5 @@ public class LiveQualityTest {
   List<LiveQuality> q=LiveQuality.offered(new JSONObject("{VIEWPRESET:[{name:'sd'},{name:'hd'},{name:'hd4k'},{name:'original',label_resolution:'1080'}]}"));
   assertEquals(1080,q.get(0).height);assertEquals(720,q.get(1).height);assertEquals(540,q.get(2).height);assertEquals(360,q.get(3).height);
  }
+ @Test public void yangdoki1440SourceSelectsTheOfferedHd8k1080Rendition()throws Exception{List<LiveQuality> q=LiveQuality.offered(new JSONObject("{RESOLUTION:'2560x1440',VIEWPRESET:[{name:'hd',label_resolution:'540'},{name:'hd4k',label_resolution:'720'},{name:'hd8k',label_resolution:'1080',resolution:'1920x1080'},{name:'original',label_resolution:'1440',resolution:'2560x1440'}]}"));assertEquals("hd8k",LiveQuality.preferred(q));assertEquals(1080,q.get(0).height);assertEquals(1440,q.stream().filter(x->x.id.equals("original")).findFirst().get().height);}
 }

@@ -16,7 +16,8 @@ public class SoopClient {
   public final int status;public HttpStatusException(int status){super("서비스 응답 오류 (HTTP "+status+")");this.status=status;}
  }
  private static int httpStatus(Throwable failure){for(Throwable t=failure;t!=null;t=t.getCause())if(t instanceof HttpStatusException)return ((HttpStatusException)t).status;return 0;}
- private static boolean authorizationFailure(Throwable failure){int status=httpStatus(failure);return status==401||status==403;}
+ private static boolean authorizationFailure(Throwable failure){int status=httpStatus(failure);for(Throwable t=failure;t!=null;t=t.getCause())if(t instanceof PlaybackAuthorizationException)return true;return status==401||status==403;}
+ private static final class PlaybackAuthorizationException extends IOException{PlaybackAuthorizationException(String message){super(message);}}
  private IOException stageFailure(String stage,Throwable failure){String reason=httpStatus(failure)>0?"HTTP "+httpStatus(failure):failure instanceof JSONException?"응답 형식 오류":failure instanceof java.net.SocketTimeoutException?"연결 시간 초과":"연결 또는 재생 목록 오류";trace(stage+": "+reason);return new IOException(stage+" · "+reason,failure);}
  private JSONObject playbackJson(String stage,String url,String form,String referer)throws IOException{
   try{return json(url,form,referer);}catch(IOException|JSONException e){throw stageFailure(stage,e);}catch(Exception e){throw stageFailure(stage,e);}
@@ -90,9 +91,19 @@ public class SoopClient {
   String url="https://sch.sooplive.com/api.php?l=DF&m="+(vod?"vodSearch":"liveSearch")+"&c=UTF-8&w=webk&isMobile=0&onlyParent=1&szType=json&szOrder=score&szKeyword="+encode(keyword)+"&nPageNo="+page+"&nListCnt=30&tab="+(vod?"vod":"live")+"&location=total_search&isHashSearch=0&v="+(vod?"5.0":"2.0");
   return ContentItem.parse(json(url,null,"https://www.sooplive.com/"),vod);
  }
- public List<ContentItem> searchStreamers(String keyword)throws Exception{
-  String url="https://sch.sooplive.com/api.php?m=bjSearch&v=3.0&szOrder=score&szKeyword="+encode(keyword);
-  return ContentItem.parse(json(url,null,"https://www.sooplive.com/"),false);
+ public List<ContentItem> searchStreamers(String keyword)throws Exception{return mobileSearch(keyword,"streamer",1,"score",20).items;}
+ public SearchPage searchPage(String keyword,String mode,int page,String order)throws Exception{
+  if(!Arrays.asList("all","streamer","live","vod").contains(mode)||page<1)throw new IllegalArgumentException("검색 조건을 확인하세요");
+  BrowseOptions.checked(BrowseOptions.SEARCH_KEYS,order);
+  if(!mode.equals("all"))return mobileSearch(keyword,mode,page,order,20);
+  List<ContentItem> items=new ArrayList<>();for(String type:new String[]{"streamer","live","vod"})items.addAll(mobileSearch(keyword,type,1,"score",type.equals("streamer")?3:6).items);
+  return new SearchPage(items,false);
+ }
+ private SearchPage mobileSearch(String keyword,String mode,int page,String order,int count)throws Exception{
+  String method=mode.equals("streamer")?"bjSearch":mode.equals("live")?"liveSearch":"vodSearch";
+  String actualOrder=order.equals("reg_date")?(mode.equals("live")?"broad_start":"reg_datetime"):order.equals("view_cnt")&&mode.equals("live")?"pc_total_view_cnt":order;
+  String form="m="+method+"&v="+(mode.equals("vod")?"5.0":"1.0")+"&w=webm&isMobile=1&t=json&c=UTF-8&szKeyword="+encode(keyword)+"&szOrder="+actualOrder+"&nPageNo="+page+"&nListCnt="+count+"&location=total_search&tab="+(mode.equals("streamer")?"bj":mode)+"&align_type=list";
+  return SearchPage.parse(json("https://sch.sooplive.com/api.php",form,"https://m.sooplive.com/"),mode);
  }
  public List<ContentItem> station(String user,String type,int page)throws Exception{
   if(!ServiceUrls.userId(user)||!Arrays.asList("all","review","clip","normal").contains(type))throw new IllegalArgumentException("방송국 ID를 확인하세요");
@@ -115,7 +126,7 @@ public class SoopClient {
   JSONObject response=playbackJson("방송 정보","https://api.m.sooplive.com/broad/a/watch","bj_id="+encode(item.user)+"&broad_no="+(item.id.matches("[0-9]+")?encode(item.id):"")+"&agent=web&player_type=webm&mode=live","https://m.sooplive.com/");
   JSONObject data=response.optJSONObject("data");
   if(response.optInt("result")!=1||data==null||data.optInt("code",0)<0)throw new IOException(data==null?"방송 정보를 확인할 수 없습니다":data.optString("message","로그인·시청 권한 또는 방송 상태를 확인하세요"));
-  if(data.optString("broad_no").isEmpty())throw new IOException("방송 중이 아닙니다");return data;
+  if(data.optString("broad_no").isEmpty())throw new IOException("방송 중이 아닙니다");trace("방송 원본: "+data.optString("resolution","미제공")+" · 서버 지역: "+data.optString("country_code","미제공"));return data;
  }
  private boolean manualCanUseWeb(JSONObject channel,String quality){if(quality.equals("auto")||quality.equals("master"))return true;for(LiveQuality q:LiveQuality.offered(channel))if(q.id.equals(quality)&&q.height>0&&q.height<=540)return true;return false;}
  private String mobileStream(ContentItem item,JSONObject mobile,String quality)throws Exception{return mobileStream(item,mobile,quality,false);}
@@ -132,11 +143,42 @@ public class SoopClient {
     try{return mobileManifest(mobile,quality,attempt[0],castCdn,attempt[1],false,direct);}catch(IOException e){if(authorizationFailure(e))throw e;castFailure=e;trace(attempt[1]+" 실패");}
    }
   }
+  if(castFailure!=null&&!webOnly&&!quality.equals("auto")&&!quality.equals("master")){
+   try{return desktopHighQuality(item,mobile,quality);}catch(IOException e){if(authorizationFailure(e))throw e;castFailure=e;trace("화질별 웹 인증 경로 실패");}
+  }
   if(!allowWebFallback&&!webOnly){if(castFailure!=null)throw new IOException("요청 화질 연결 실패 · 현재 재생을 유지합니다",castFailure);throw new IOException("서버가 고화질 재생 인증을 제공하지 않았습니다");}
   if(castFailure!=null)trace("고화질 경로 실패 · 모바일 웹 경로 확인");
   String webKey=mobile.optString("hls_authentication_key"),webCdn=mobile.optString("cdn");
   if(webKey.isEmpty()||webCdn.isEmpty()){if(castFailure!=null)throw castFailure;throw new IOException("생방송 시청 인증을 받지 못했습니다");}
   try{return mobileManifest(mobile,quality,webKey,webCdn,"모바일 웹",true,false);}catch(IOException e){if(castFailure!=null)e.addSuppressed(castFailure);throw e;}
+ }
+ /** Request an independent, quality-specific web entitlement after a transport failure. */
+ private String desktopHighQuality(ContentItem item,JSONObject mobile,String quality)throws IOException{
+  String endpoint="https://live.sooplive.com/afreeca/player_live_api.php",bno=mobile.optString("broad_no");
+  JSONObject response=playbackJson("웹 방송 정보",endpoint,"bid="+encode(item.user)+"&bno="+encode(bno)+"&type=live&player_type=html5&stream_type=common",item.pageUrl());
+  JSONObject channel=response.optJSONObject("CHANNEL");
+  if(channel==null||channel.optInt("RESULT")!=1)throw new PlaybackAuthorizationException("웹 방송의 로그인·시청 권한을 확인하세요");
+  if(!channel.optString("BNO").equals(bno))throw new IOException("방송 정보가 변경되었습니다 · 다시 연결하세요");
+  boolean offered=false;for(LiveQuality q:LiveQuality.offered(channel))if(q.id.equals(quality))offered=true;
+  if(!offered)throw new IOException("웹 서버가 요청 화질을 제공하지 않습니다");
+  JSONObject token=playbackJson("화질별 웹 인증",endpoint,"bid="+encode(item.user)+"&bno="+encode(bno)+"&type=aid&stream_type=common&quality="+encode(quality)+"&player_type=html5&mode=landing&from_api=0",item.pageUrl()).optJSONObject("CHANNEL");
+  trace("화질별 웹 인증 응답: "+(token==null?"없음":token.optInt("RESULT"))+" · 인증 발급 "+(token!=null&&!token.optString("AID").isEmpty()));
+  if(token==null||token.optInt("RESULT")!=1||token.optString("AID").isEmpty())throw new PlaybackAuthorizationException("요청 화질의 웹 시청 인증을 받지 못했습니다");
+  String cdn=channel.optString("CDN");
+  if(Arrays.asList("lg_cdn","lg_cdn_mobile_web","lg_cdn_mobile_app").contains(cdn))cdn="lg_cdn_pc_web";
+  if(Arrays.asList("gs_cdn","gs_cdn_mobile_web","gs_cdn_mobile_app").contains(cdn))cdn="gs_cdn_pc_web";
+  if(!cdn.matches("[A-Za-z0-9_\\-]+"))throw new IOException("웹 재생 서버 정보가 없습니다");
+  String manager=ServiceUrls.https(channel.optString("RMD"));
+  if(manager.isEmpty()||!ServiceUrls.official(java.net.URI.create(manager).getHost()))throw new IOException("웹 재생 서버 정보를 확인할 수 없습니다");
+  if(!java.net.URI.create(manager).getPath().endsWith(".html"))manager=manager.replaceAll("/$","")+"/broad_stream_assign.html";
+  trace("화질별 웹 인증 완료 · 프리셋: "+quality+" · CDN: "+cdn);
+  JSONObject assignment=playbackJson("웹 서버 할당",HttpUrl.get(manager).newBuilder().setQueryParameter("return_type",cdn).setQueryParameter("broad_key",bno+"-common-"+quality+"-hls").build().toString(),null,item.pageUrl());
+  String media=ServiceUrls.https(assignment.optString("view_url"));if(media.isEmpty())throw new IOException("웹 재생 주소가 없습니다");
+  trace("화질별 웹 서버: "+java.net.URI.create(media).getHost());
+  String base=HttpUrl.get(media).newBuilder().setQueryParameter("aid",token.optString("AID")).build().toString();
+  String selected;try{selected=LiveManifest.select(base,playbackText("웹 화질 재생 목록",base),quality);}catch(IOException e){throw stageFailure("웹 화질 선택",e);}
+  if(!selected.equals(base))LiveManifest.select(selected,playbackText("웹 영상 목록",selected),"auto");
+  trace("화질별 웹 재생 주소 확인 완료");return selected;
  }
  private String mobileManifest(JSONObject mobile,String quality,String aid,String assignedCdn,String route,boolean allowLower,boolean direct)throws IOException{
   String cdn=mobileWebCdn(assignedCdn);if(!cdn.matches("[A-Za-z0-9_\\-]+"))throw new IOException("재생 서버 정보가 올바르지 않습니다");

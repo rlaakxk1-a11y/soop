@@ -19,6 +19,7 @@ public class BrowseUiTest {
   @Override public List<ContentItem> liveList(String category,String order,int page)throws Exception{calls.add("live:"+category+":"+order+":"+page);if(page==2&&failPageTwo){failPageTwo=false;throw new java.io.IOException("fixture timeout");}ContentItem a=new ContentItem(order.equals("view_cnt_asc")?"low":"high","demo","테스트","닉","",order.equals("view_cnt_asc")?"1":"100",false);return page==1?Collections.singletonList(a):Arrays.asList(a,new ContentItem("page2","demo2","다음 방송","닉2","","7",false));}
   @Override public List<ContentItem> station(String id,String type,int page,String order){calls.add("video:"+id+":"+type+":"+order+":"+page);return Collections.singletonList(new ContentItem(order.equals("read_cnt")?"999":"123",id,"동영상","닉","","",true));}
   @Override public List<ContentItem> search(String q,boolean vod,int page,String order){calls.add("search:"+q+":"+vod+":"+order+":"+page);return Collections.emptyList();}
+  @Override public SearchPage searchPage(String q,String mode,int page,String order){return new SearchPage(search(q,mode.equals("vod"),page,order),false);}
   @Override public List<ContentItem> searchStreamers(String q){return Collections.emptyList();}
   @Override public org.json.JSONArray channelPosts(String id){return new org.json.JSONArray();}
   @Override public String loggedInUser(){return "";}

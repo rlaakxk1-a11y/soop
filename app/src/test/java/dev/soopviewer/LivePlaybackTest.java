@@ -45,5 +45,22 @@ public class LivePlaybackTest {
  @Test public void directPresetRecoversAnUnsupportedMaster()throws Exception{Fixture f=new Fixture();f.cdn="lg_cdn_mobile_web";f.castStatus=400;f.directSucceeds=true;PlaybackInfo p=f.resolve(ITEM);assertTrue(p.media.get(0).contains("direct.m3u8"));assertEquals(0,f.webRequests);}
  @Test public void serverIssuedSpareKeyIsTriedBeforeWebDowngrade()throws Exception{Fixture f=new Fixture();f.castStatus=400;f.spare="spare-key";assertTrue(f.resolve(ITEM).media.get(0).contains("aid=signed-original"));assertEquals(0,f.webRequests);}
  @Test public void explicit1080SelectionDoesNotSilentlyReturn540()throws Exception{Fixture f=new Fixture();f.castStatus=400;try{f.liveStream(ITEM,new JSONObject("{_MOBILE:true,VIEWPRESET:[{name:'original',height:1080}]}"),"original");fail("must report failed manual selection");}catch(IOException expected){assertEquals(0,f.webRequests);}}
+ private static class DesktopFixture extends Fixture{
+  int desktopTokens=0,tokenResult=1;boolean desktopAvailable=true;String requestedPreset="";
+  DesktopFixture(){castStatus=400;cdn="lg_cdn_mobile_web";}
+  @Override public JSONObject json(String url,String form,String ref)throws Exception{
+   if(url.contains("player_live_api")){
+    if(form.contains("type=aid")){desktopTokens++;assertTrue(form.contains("quality=original"));assertTrue(form.contains("player_type=html5"));return new JSONObject("{CHANNEL:{RESULT:"+tokenResult+",AID:'quality-specific-web-key'}}");}
+    return new JSONObject("{CHANNEL:{RESULT:1,BNO:'987',CDN:'lg_cdn',RMD:'https://livestream-manager.sooplive.com',VIEWPRESET:"+(desktopAvailable?"[{name:'original',label_resolution:'1080'}]":"[]")+"}}");
+   }
+   if(url.contains("return_type=lg_cdn_pc_web")){requestedPreset=okhttp3.HttpUrl.get(url).queryParameter("broad_key");return new JSONObject("{view_url:'https://cdn.example/web-quality.m3u8'}");}
+   return super.json(url,form,ref);
+  }
+  @Override public String text(String url,String form,String ref)throws Exception{if(url.contains("aid=quality-specific-web-key"))return MEDIA;return super.text(url,form,ref);}
+ }
+ @Test public void castTransportFailureCanUseAnIndependentlyIssuedQualitySpecificWebToken()throws Exception{DesktopFixture f=new DesktopFixture();String media=f.resolve(ITEM).media.get(0);assertTrue(media.contains("quality-specific-web-key"));assertEquals(1,f.desktopTokens);assertEquals("987-common-original-hls",f.requestedPreset);assertEquals(0,f.webRequests);assertTrue(f.playbackDiagnostic().contains("화질별 웹 인증 완료"));assertFalse(f.playbackDiagnostic().contains("quality-specific-web-key"));}
+ @Test public void manual1080CanRecoverOnQualitySpecificWebEntitlement()throws Exception{DesktopFixture f=new DesktopFixture();assertTrue(f.liveStream(ITEM,new JSONObject("{_MOBILE:true,VIEWPRESET:[{name:'original',height:1080}]}"),"original").contains("quality-specific-web-key"));assertEquals(0,f.webRequests);}
+ @Test public void rejectedQualitySpecificWebAuthorizationStopsFurtherPlaybackRoutes()throws Exception{DesktopFixture f=new DesktopFixture();f.tokenResult=-6;try{f.resolve(ITEM);fail("authorization must be respected");}catch(IOException expected){assertEquals(1,f.desktopTokens);assertEquals(0,f.webRequests);}}
+ @Test public void unofferedWebPresetIsNeverRequested()throws Exception{DesktopFixture f=new DesktopFixture();f.desktopAvailable=false;assertTrue(f.resolve(ITEM).media.get(0).contains("web-540-key"));assertEquals(0,f.desktopTokens);}
  @Test(expected=IOException.class) public void mobilePermissionFailureStopsBeforeCdn()throws Exception{new SoopClient(){@Override public JSONObject json(String url,String form,String ref)throws Exception{assertTrue(url.contains("/broad/a/watch"));return new JSONObject("{result:0,data:{code:-3002,message:'Login required'}}");}}.resolve(ITEM);}
 }
