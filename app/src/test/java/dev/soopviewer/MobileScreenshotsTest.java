@@ -1,0 +1,30 @@
+package dev.soopviewer;
+import android.graphics.*;
+import android.os.Looper;
+import android.view.*;
+import android.widget.*;
+import org.junit.*;
+import org.junit.runner.RunWith;
+import org.robolectric.*;
+import org.robolectric.annotation.*;
+import org.robolectric.android.controller.ActivityController;
+import org.robolectric.util.ReflectionHelpers;
+import java.util.*;
+import java.io.*;
+
+/** Offline layout evidence. Fixture content; no account or live network requests. */
+@RunWith(RobolectricTestRunner.class)
+@Config(sdk=28,qualifiers="w412dp-h892dp-mdpi")
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+public class MobileScreenshotsTest {
+ private ActivityController<MainActivity> controller;
+ @Before public void setup(){RuntimeEnvironment.getApplication().getSharedPreferences("viewer",0).edit().clear().commit();MainActivity.clientFactory=()->new SoopClient(){
+  @Override public List<ContentItem> home(int page){return Arrays.asList(new ContentItem("100","demo","오늘도 함께하는 라이브 방송","테스트 스트리머","","12345",false),new ContentItem("101","demo2","게임 이야기와 실시간 소통","두 번째 스트리머","","8492",false));}
+  @Override public List<ContentItem> station(String id,String type,int page){return Arrays.asList(new ContentItem("123","demo","오늘의 다시보기 · 테스트 영상","테스트 스트리머","","",true));}
+  @Override public org.json.JSONArray channelPosts(String id)throws Exception{return new org.json.JSONArray("[{titleName:'오늘 방송 안내',regDate:'2026-11-06',content:{textContent:'잠시 후 방송에서 만나요. 화면 검증용 예시입니다.'}}]");}
+  @Override public org.json.JSONArray categories()throws Exception{return new org.json.JSONArray("[{category_name:'게임',child:[{category_no:'1',category_name:'리그 오브 레전드'},{category_no:'2',category_name:'배틀그라운드'}]},{category_name:'보이는 라디오',child:[{category_no:'3',category_name:'토크 / 캠방'},{category_no:'4',category_name:'먹방'}]}]");}
+ };controller=Robolectric.buildActivity(MainActivity.class).setup();}
+ @After public void cleanup(){controller.pause().stop().destroy();MainActivity.clientFactory=SoopClient::new;}
+ private void capture(String name)throws Exception{for(int i=0;i<20;i++){Thread.sleep(20);Shadows.shadowOf(Looper.getMainLooper()).idle();}View view=ReflectionHelpers.getField(controller.get(),"root");view.measure(View.MeasureSpec.makeMeasureSpec(412,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(892,View.MeasureSpec.EXACTLY));view.layout(0,0,412,892);Bitmap bitmap=Bitmap.createBitmap(412,892,Bitmap.Config.ARGB_8888);view.draw(new Canvas(bitmap));File dir=new File("build/reports/mobile-screenshots");dir.mkdirs();try(OutputStream out=new FileOutputStream(new File(dir,name+".png"))){bitmap.compress(Bitmap.CompressFormat.PNG,100,out);}}
+ @Test public void homeAndStationAndExplore()throws Exception{capture("home");ReflectionHelpers.callInstanceMethod(controller.get(),"station",ReflectionHelpers.ClassParameter.from(String.class,"demo"),ReflectionHelpers.ClassParameter.from(String.class,"home"));capture("station");ReflectionHelpers.callInstanceMethod(controller.get(),"explore");capture("explore");}
+}
