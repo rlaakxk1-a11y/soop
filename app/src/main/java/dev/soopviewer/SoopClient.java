@@ -8,6 +8,10 @@ import java.util.concurrent.TimeUnit;
 
 public class SoopClient {
  public volatile boolean ads=true;
+ private final Map<String,String> mediaReferers=Collections.synchronizedMap(new LinkedHashMap<String,String>(){@Override protected boolean removeEldestEntry(Map.Entry<String,String> eldest){return size()>16;}});
+ private String rememberMedia(String media,String referer){mediaReferers.put(media,referer);return media;}
+ public Map<String,String> mediaHeaders(ContentItem item,String media){return MediaRequestHeaders.forRequest(media,mediaReferers.getOrDefault(media,item.vod?item.pageUrl():"https://m.sooplive.com/"));}
+
  private volatile String playbackDiagnostic="아직 생방송 재생 요청이 없습니다";
  public String playbackDiagnostic(){return playbackDiagnostic;}
  private synchronized void trace(String message){playbackDiagnostic=(playbackDiagnostic+"\n"+message);if(playbackDiagnostic.length()>2500)playbackDiagnostic=playbackDiagnostic.substring(playbackDiagnostic.length()-2500);}
@@ -23,7 +27,10 @@ public class SoopClient {
   try{return json(url,form,referer);}catch(IOException|JSONException e){throw stageFailure(stage,e);}catch(Exception e){throw stageFailure(stage,e);}
  }
  private String playbackText(String stage,String url)throws IOException{
-  try{return text(url,null,"https://m.sooplive.com/");}catch(Exception e){throw stageFailure(stage,e);}
+  return playbackText(stage,url,"https://m.sooplive.com/");
+ }
+ private String playbackText(String stage,String url,String referer)throws IOException{
+  try{return text(url,null,referer);}catch(Exception e){throw stageFailure(stage,e);}
  }
  public static String mobileWebCdn(String cdn){
   // gs_cdn is the native/cast family, not a browser HLS delivery endpoint.
@@ -47,10 +54,7 @@ public class SoopClient {
  }
  public String text(String url,String form,String referer)throws Exception{
   if(ServiceUrls.https(url).isEmpty())throw new IOException("HTTPS 주소만 사용할 수 있습니다");
-  Request.Builder b=new Request.Builder().url(url).header("User-Agent","Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36");
-  if(referer!=null)b.header("Referer",referer);
-  boolean mobileRequest=referer!=null&&referer.startsWith("https://m.sooplive.");if(mobileRequest)b.header("Origin","https://m.sooplive.com");
-  String host=java.net.URI.create(url).getHost();if(!mobileRequest&&ServiceUrls.official(host)&&(host.startsWith("live.")||host.startsWith("livestream-manager."))){b.header("User-Agent","Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36");b.header("Origin","https://play.sooplive.com");}
+  Request.Builder b=new Request.Builder().url(url);for(Map.Entry<String,String> header:MediaRequestHeaders.forRequest(url,referer).entrySet())b.header(header.getKey(),header.getValue());
   if(form!=null)b.post(RequestBody.create(form,MediaType.get("application/x-www-form-urlencoded; charset=UTF-8")));
   try(Response r=http.newCall(b.build()).execute()){
    if(!r.isSuccessful())throw new HttpStatusException(r.code());if(r.body()==null)throw new IOException("빈 응답입니다");
@@ -136,18 +140,18 @@ public class SoopClient {
   boolean cast=!webOnly&&(mobile.optBoolean("is_chromecast",false)||mobile.optInt("is_chromecast",0)==1);
   String castKey=cast?mobile.optString("chromecast_authentication_key"):"",castCdn=cast?mobile.optString("cdn_chromecast"):"",spare=cast?mobile.optString("chromecast_authentication_spare_key"):"";
   trace("요청 프리셋: "+quality+" · 기본 캐스트 키 "+(!castKey.isEmpty())+" · 예비 캐스트 키 "+(!spare.isEmpty()));
-  IOException castFailure=null;
+  IOException castFailure=null;boolean highQualityDenied=false;
   if(!castCdn.isEmpty()){
    String[][] attempts={{castKey,"고화질 기본","master"},{castKey,"고화질 직접","direct"},{spare,"고화질 예비","master"}};
    for(String[] attempt:attempts){if(attempt[0].isEmpty())continue;if(attempt[1].equals("고화질 예비")&&spare.equals(castKey))continue;boolean direct=attempt[2].equals("direct");if(direct&&(quality.equals("auto")||quality.equals("master")))continue;
-    try{return mobileManifest(mobile,quality,attempt[0],castCdn,attempt[1],false,direct);}catch(IOException e){if(authorizationFailure(e))throw e;castFailure=e;trace(attempt[1]+" 실패");}
+    try{return mobileManifest(mobile,quality,attempt[0],castCdn,attempt[1],false,direct);}catch(IOException e){castFailure=e;trace(attempt[1]+" 실패");if(authorizationFailure(e)){highQualityDenied=true;break;}}
    }
   }
-  if(castFailure!=null&&!webOnly&&!quality.equals("auto")&&!quality.equals("master")){
-   try{return desktopHighQuality(item,mobile,quality);}catch(IOException e){if(authorizationFailure(e))throw e;castFailure=e;trace("화질별 웹 인증 경로 실패");}
+  if(castFailure!=null&&!highQualityDenied&&!webOnly&&!quality.equals("auto")&&!quality.equals("master")){
+   try{return desktopHighQuality(item,mobile,quality);}catch(IOException e){castFailure=e;trace("화질별 웹 인증 경로 실패 · 다른 고화질 경로를 재시도하지 않습니다");}
   }
   if(!allowWebFallback&&!webOnly){if(castFailure!=null)throw new IOException("요청 화질 연결 실패 · 현재 재생을 유지합니다",castFailure);throw new IOException("서버가 고화질 재생 인증을 제공하지 않았습니다");}
-  if(castFailure!=null)trace("고화질 경로 실패 · 모바일 웹 경로 확인");
+  if(castFailure!=null)trace("고화질 경로 실패 · 별도로 발급된 모바일 웹 권한으로 재생 확인");
   String webKey=mobile.optString("hls_authentication_key"),webCdn=mobile.optString("cdn");
   if(webKey.isEmpty()||webCdn.isEmpty()){if(castFailure!=null)throw castFailure;throw new IOException("생방송 시청 인증을 받지 못했습니다");}
   try{return mobileManifest(mobile,quality,webKey,webCdn,"모바일 웹",true,false);}catch(IOException e){if(castFailure!=null)e.addSuppressed(castFailure);throw e;}
@@ -176,9 +180,10 @@ public class SoopClient {
   String media=ServiceUrls.https(assignment.optString("view_url"));if(media.isEmpty())throw new IOException("웹 재생 주소가 없습니다");
   trace("화질별 웹 서버: "+java.net.URI.create(media).getHost());
   String base=HttpUrl.get(media).newBuilder().setQueryParameter("aid",token.optString("AID")).build().toString();
-  String selected;try{selected=LiveManifest.select(base,playbackText("웹 화질 재생 목록",base),quality);}catch(IOException e){throw stageFailure("웹 화질 선택",e);}
-  if(!selected.equals(base))LiveManifest.select(selected,playbackText("웹 영상 목록",selected),"auto");
-  trace("화질별 웹 재생 주소 확인 완료");return selected;
+  trace("웹 영상 요청: PC User-Agent · Origin/Referer play.sooplive.com");
+  String selected;try{selected=LiveManifest.select(base,playbackText("웹 화질 재생 목록",base,item.pageUrl()),quality);}catch(IOException e){throw stageFailure("웹 화질 선택",e);}
+  if(!selected.equals(base))LiveManifest.select(selected,playbackText("웹 영상 목록",selected,item.pageUrl()),"auto");
+  trace("화질별 웹 재생 주소 확인 완료");return rememberMedia(selected,item.pageUrl());
  }
  private String mobileManifest(JSONObject mobile,String quality,String aid,String assignedCdn,String route,boolean allowLower,boolean direct)throws IOException{
   String cdn=mobileWebCdn(assignedCdn);if(!cdn.matches("[A-Za-z0-9_\\-]+"))throw new IOException("재생 서버 정보가 올바르지 않습니다");
@@ -198,7 +203,7 @@ public class SoopClient {
    String child=playbackText(route+" 영상 목록",selected);
    try{LiveManifest.select(selected,child,"auto");}catch(IOException e){throw stageFailure(route+" 영상 목록",e);}
   }
-  trace(route+" 재생 주소 확인 완료");return selected;
+  trace(route+" 재생 주소 확인 완료");return rememberMedia(selected,"https://m.sooplive.com/");
  }
  public String fallbackLiveStream(ContentItem item,JSONObject channel,String quality)throws Exception{
   beginPlayback();trace("플레이어 오류 후 모바일 웹으로 1회 복구");return mobileStream(item,mobileWatch(item),quality,true);
@@ -214,7 +219,7 @@ public class SoopClient {
   // server assignments intact instead of guessing a different CDN.
   String cdn=channel.optString("CDN");if(cdn.isEmpty()||cdn.startsWith("gs_cdn"))cdn="gs_cdn_pc_web";else if(cdn.contains("lg_cdn"))cdn="lg_cdn_pc_web";
   JSONObject assigned=json(base.replaceAll("/$","")+"/broad_stream_assign.html?return_type="+encode(cdn)+"&broad_key="+encode(bno+"-common-"+quality+"-hls"),null,item.pageUrl());
-  String media=ServiceUrls.https(assigned.optString("view_url"));if(media.isEmpty())throw new IOException("재생 주소를 받지 못했습니다");return HttpUrl.get(media).newBuilder().setQueryParameter("aid",token.optString("AID")).build().toString();
+  String media=ServiceUrls.https(assigned.optString("view_url"));if(media.isEmpty())throw new IOException("재생 주소를 받지 못했습니다");return rememberMedia(HttpUrl.get(media).newBuilder().setQueryParameter("aid",token.optString("AID")).build().toString(),item.pageUrl());
  }
 
 }

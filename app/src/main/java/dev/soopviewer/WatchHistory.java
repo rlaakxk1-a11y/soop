@@ -21,7 +21,7 @@ public final class WatchHistory {
    if(completed||part>=durations.size())return 0;
    long duration=durations.get(part);return duration>0?Math.min(positionMs,Math.max(0,duration-1000)):positionMs;
   }
-  public String label(){return completed?"시청 완료 · 다시 보기":(part>0?(part+1)+"부 · ":"")+time(positionMs)+"부터 이어보기";}
+  public String label(){return completed?"시청 완료 · 다시 보기":time(totalMs>0?elapsedMs:positionMs)+"부터 이어보기";}
   public String timeLabel(){return totalMs>0?time(elapsedMs)+" / "+time(totalMs):time(positionMs);}
   private JSONObject json()throws JSONException {
    JSONObject o=new JSONObject();o.put("id",item.id);o.put("user",item.user);o.put("title",item.title);o.put("nick",item.nick);o.put("thumb",item.thumb);o.put("part",part);o.put("position",positionMs);o.put("total",totalMs);o.put("elapsed",elapsedMs);o.put("updated",updatedAt);o.put("completed",completed);return o;

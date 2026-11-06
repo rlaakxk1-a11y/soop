@@ -4,7 +4,7 @@ import java.util.*;
 public final class PlaybackInfo {
  public final List<String> media=new ArrayList<>(),chat=new ArrayList<>();
  public final List<Long> durations=new ArrayList<>();public JSONObject live;public final List<LiveQuality> qualities=new ArrayList<>();public String selectedQuality="master";
- public String title="",user="",thumbnail="";public int chatSeconds=300;
+ public boolean joinedVod=false;public String title="",user="",thumbnail="";public int chatSeconds=300;
  public static PlaybackInfo vod(JSONObject response)throws Exception{
   JSONObject d=response.optJSONObject("data");if(d==null)throw new Exception("다시보기 정보를 가져오지 못했습니다");
   if(d.optInt("code",0)<0)throw new Exception("계정 권한 또는 VOD 공개 상태를 확인하세요 ("+d.optInt("code")+")");
