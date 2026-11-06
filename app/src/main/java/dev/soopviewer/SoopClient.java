@@ -11,7 +11,7 @@ public class SoopClient {
  private volatile String playbackDiagnostic="아직 생방송 재생 요청이 없습니다";
  public String playbackDiagnostic(){return playbackDiagnostic;}
  private synchronized void trace(String message){playbackDiagnostic=(playbackDiagnostic+"\n"+message);if(playbackDiagnostic.length()>2500)playbackDiagnostic=playbackDiagnostic.substring(playbackDiagnostic.length()-2500);}
- private void beginPlayback(){playbackDiagnostic="SOOP Viewer 0.8.1 · 생방송 연결";}
+ private void beginPlayback(){playbackDiagnostic="SOOP Viewer 0.8.2 · 생방송 연결";}
  public static final class HttpStatusException extends IOException{
   public final int status;public HttpStatusException(int status){super("서비스 응답 오류 (HTTP "+status+")");this.status=status;}
  }
@@ -58,6 +58,12 @@ public class SoopClient {
  }
  public JSONObject json(String url,String form,String ref)throws Exception{return new JSONObject(text(url,form,ref));}
  public static String encode(String s){try{return java.net.URLEncoder.encode(s,"UTF-8");}catch(Exception e){throw new IllegalArgumentException(e);}}
+ public LoginResult login(String user,String password)throws Exception{
+  if(user.trim().isEmpty()||password.isEmpty())throw new IllegalArgumentException("아이디와 비밀번호를 입력하세요");
+  // Credentials go only to SOOP's official HTTPS login endpoint; never stored or logged.
+  return LoginResult.parse(json("https://login.sooplive.com/app/LoginAction.php","szWork=login&szType=json&szUid="+encode(user.trim())+"&szPassword="+encode(password)+"&isSaveId=false&isSavePw=false&isSaveJoin=false&isLoginRetain=Y","https://login.sooplive.com/afreeca/login.php"));
+ }
+ public String loggedInUser()throws Exception{JSONObject channel=json("https://afevent2.sooplive.com/api/get_private_info.php",null,"https://m.sooplive.com/").optJSONObject("CHANNEL");return channel==null?"":channel.optString("LOGIN_ID","").trim();}
  public List<ContentItem> home(int page)throws Exception{return ContentItem.parse(json("https://live.sooplive.com/api/main_broad_list_api.php?selectType=action&selectValue=all&orderType=view_cnt&pageNo="+page+"&lang=ko_KR",null,"https://www.sooplive.com/"),false);}
  public List<ContentItem> liveCategory(String id,int page)throws Exception{
   if(!id.matches("[0-9]+"))throw new IllegalArgumentException("카테고리를 확인하세요");return ContentItem.parse(json("https://live.sooplive.com/api/main_broad_list_api.php?selectType=cate&selectValue="+id+"&orderType=view_cnt&pageNo="+page+"&lang=ko_KR",null,"https://m.sooplive.com/"),false);
