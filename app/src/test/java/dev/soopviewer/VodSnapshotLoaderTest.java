@@ -13,7 +13,7 @@ import org.robolectric.*;
 import org.robolectric.annotation.*;
 import static org.junit.Assert.*;
 
-@RunWith(RobolectricTestRunner.class) @Config(sdk=28) @GraphicsMode(GraphicsMode.Mode.NATIVE)
+@RunWith(RobolectricTestRunner.class) @Config(sdk=28,shadows=RegionDecoderShadow.class) @GraphicsMode(GraphicsMode.Mode.NATIVE)
 public class VodSnapshotLoaderTest {
  private VodSnapshotLoader loader;private byte[] sheet;private final AtomicInteger downloads=new AtomicInteger();
  private final VodPreview.Track track=new VodPreview.Track("https://videoimg.sooplive.com/snapshot?rowKey=fixture&column=",900000);
