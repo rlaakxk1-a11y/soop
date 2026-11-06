@@ -42,7 +42,7 @@ public class LivePlaybackTest {
  @Test public void highQualityDenialStopsHigherQualityRetriesButAllowsTheIndependentMobileGrant()throws Exception{for(int status:new int[]{401,403}){Fixture f=new Fixture();f.castStatus=status;assertTrue(f.resolve(ITEM).media.get(0).contains("web-540-key"));assertEquals(1,f.castRequests);assertEquals(1,f.webRequests);assertEquals(2,f.assignments);}}
 
  @Test public void twoBrokenRoutesReportTheFailedStage()throws Exception{Fixture f=new Fixture();f.castStatus=400;f.webStatus=400;try{f.resolve(ITEM);fail("expected failure");}catch(IOException expected){assertTrue(expected.getMessage().contains("모바일 웹 재생 목록"));assertTrue(expected.getMessage().contains("HTTP 400"));assertEquals(1,f.webRequests);}}
- @Test public void playerRecoveryUsesOnlyFreshWebEntitlement()throws Exception{Fixture f=new Fixture();String url=f.fallbackLiveStream(ITEM,new JSONObject(),"original");assertTrue(url.contains("aid=web-540-key"));assertEquals(0,f.castRequests);assertEquals(1,f.webRequests);}
+ @Test public void playerRecoveryRefreshesHighQualityBeforeAnyDowngrade()throws Exception{Fixture f=new Fixture();String url=f.fallbackLiveStream(ITEM,new JSONObject(),"original");assertTrue(url.contains("aid=signed-original"));assertEquals(1,f.castRequests);assertEquals(0,f.webRequests);}
  @Test public void directPresetRecoversAnUnsupportedMaster()throws Exception{Fixture f=new Fixture();f.cdn="lg_cdn_mobile_web";f.castStatus=400;f.directSucceeds=true;PlaybackInfo p=f.resolve(ITEM);assertTrue(p.media.get(0).contains("direct.m3u8"));assertEquals(0,f.webRequests);}
  @Test public void serverIssuedSpareKeyIsTriedBeforeWebDowngrade()throws Exception{Fixture f=new Fixture();f.castStatus=400;f.spare="spare-key";assertTrue(f.resolve(ITEM).media.get(0).contains("aid=signed-original"));assertEquals(0,f.webRequests);}
  @Test public void explicit1080SelectionDoesNotSilentlyReturn540()throws Exception{Fixture f=new Fixture();f.castStatus=400;try{f.liveStream(ITEM,new JSONObject("{_MOBILE:true,VIEWPRESET:[{name:'original',height:1080}]}"),"original");fail("must report failed manual selection");}catch(IOException expected){assertEquals(0,f.webRequests);}}
@@ -65,4 +65,19 @@ public class LivePlaybackTest {
 
  @Test public void unofferedWebPresetIsNeverRequested()throws Exception{DesktopFixture f=new DesktopFixture();f.desktopAvailable=false;assertTrue(f.resolve(ITEM).media.get(0).contains("web-540-key"));assertEquals(0,f.desktopTokens);}
  @Test(expected=IOException.class) public void mobilePermissionFailureStopsBeforeCdn()throws Exception{new SoopClient(){@Override public JSONObject json(String url,String form,String ref)throws Exception{assertTrue(url.contains("/broad/a/watch"));return new JSONObject("{result:0,data:{code:-3002,message:'Login required'}}");}}.resolve(ITEM);}
+ @Test public void desktopGrantCanProvide1080EvenWithoutCastSupport()throws Exception{DesktopFixture f=new DesktopFixture();f.cast=false;assertTrue(f.resolve(ITEM).media.get(0).contains("quality-specific-web-key"));assertEquals(0,f.castRequests);assertEquals(0,f.webRequests);}
+ @Test public void recoveryStillRequiresANewServerGrant()throws Exception{Fixture f=new Fixture();f.cast=false;assertTrue(f.fallbackLiveStream(ITEM,new JSONObject(),"original").contains("web-540-key"));assertEquals(0,f.castRequests);}
+ private static class AdultFixture extends DesktopFixture{
+  int webResult=1,aidResult=1;boolean mobileDenied=true;
+  @Override public JSONObject json(String url,String form,String ref)throws Exception{
+   if(url.contains("/broad/a/watch"))return new JSONObject("{result:0,data:{code:-1,message:'You must verify your identity to access this content.'}}");
+   if(url.contains("player_live_api")&&form.contains("type=live"))return new JSONObject("{CHANNEL:{RESULT:"+webResult+",BNO:'987',CDN:'lg_cdn',RMD:'https://livestream-manager.sooplive.com',CHATNO:'42',VIEWPRESET:[{name:'original',label_resolution:'1080'}]}}");
+   if(url.contains("player_live_api")&&form.contains("type=aid")){tokenResult=aidResult;}
+   return super.json(url,form,ref);
+  }
+ }
+ @Test public void verifiedWebSessionCanAuthorizePlaybackWhenMobileIdentitySessionIsMissing()throws Exception{AdultFixture f=new AdultFixture();PlaybackInfo info=f.resolve(ITEM);assertTrue(info.live.optBoolean("_VERIFIED_WEB"));assertEquals("42",info.live.optString("CHATNO"));assertTrue(info.media.get(0).contains("quality-specific-web-key"));}
+ @Test public void identityRequiredByBothServersStaysBlocked()throws Exception{AdultFixture f=new AdultFixture();f.webResult=-6;try{f.resolve(ITEM);fail();}catch(SoopClient.IdentityVerificationException expected){assertEquals(0,f.desktopTokens);assertEquals(0,f.webRequests);}}
+ @Test public void identityCannotBeReplacedWithMetadataAlone()throws Exception{AdultFixture f=new AdultFixture();f.aidResult=-6;try{f.resolve(ITEM);fail();}catch(SoopClient.IdentityVerificationException expected){assertEquals(1,f.desktopTokens);assertEquals(0,f.webRequests);}}
+
 }

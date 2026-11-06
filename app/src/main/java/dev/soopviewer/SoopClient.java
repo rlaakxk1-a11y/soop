@@ -21,6 +21,7 @@ public class SoopClient {
  }
  private static int httpStatus(Throwable failure){for(Throwable t=failure;t!=null;t=t.getCause())if(t instanceof HttpStatusException)return ((HttpStatusException)t).status;return 0;}
  private static boolean authorizationFailure(Throwable failure){int status=httpStatus(failure);for(Throwable t=failure;t!=null;t=t.getCause())if(t instanceof PlaybackAuthorizationException)return true;return status==401||status==403;}
+ public static final class IdentityVerificationException extends IOException{IdentityVerificationException(){super("공식 본인 · 성인 인증 상태를 확인해야 합니다. 로그인 후 본인 인증을 진행하세요.");}}
  private static final class PlaybackAuthorizationException extends IOException{PlaybackAuthorizationException(String message){super(message);}}
  private IOException stageFailure(String stage,Throwable failure){String reason=httpStatus(failure)>0?"HTTP "+httpStatus(failure):failure instanceof JSONException?"응답 형식 오류":failure instanceof java.net.SocketTimeoutException?"연결 시간 초과":"연결 또는 재생 목록 오류";trace(stage+": "+reason);return new IOException(stage+" · "+reason,failure);}
  private JSONObject playbackJson(String stage,String url,String form,String referer)throws IOException{
@@ -40,16 +41,20 @@ public class SoopClient {
   return cdn;
  }
 
+ private SessionCookies sessions;
+ public void attachSessions(SessionCookies sessions){this.sessions=sessions;}
  public final OkHttpClient http;
  public SoopClient(){
   http=new OkHttpClient.Builder().connectTimeout(15,TimeUnit.SECONDS).readTimeout(20,TimeUnit.SECONDS).callTimeout(30,TimeUnit.SECONDS).followSslRedirects(false)
    .cookieJar(new CookieJar(){
+    private final ThreadLocal<Integer> requestEpoch=new ThreadLocal<>();
     @Override public List<Cookie> loadForRequest(HttpUrl url){
+     if(sessions!=null){sessions.awaitReady();requestEpoch.set(sessions.epoch());}
      String raw=CookieManager.getInstance().getCookie(url.toString());List<Cookie> list=new ArrayList<>();
      if(raw!=null)for(String field:raw.split(";")){int n=field.indexOf('=');if(n>0)try{list.add(new Cookie.Builder().name(field.substring(0,n).trim()).value(field.substring(n+1).trim()).hostOnlyDomain(url.host()).path("/").secure().build());}catch(IllegalArgumentException ignored){}}
      return list;
     }
-    @Override public void saveFromResponse(HttpUrl url,List<Cookie> cookies){for(Cookie c:cookies)CookieManager.getInstance().setCookie(url.toString(),c.toString());}
+    @Override public void saveFromResponse(HttpUrl url,List<Cookie> cookies){if(sessions!=null){Integer epoch=requestEpoch.get();sessions.receive(url,cookies,epoch==null?-1:epoch);}else for(Cookie c:cookies)CookieManager.getInstance().setCookie(url.toString(),c.toString());}
    }).addInterceptor(chain->{Request r=chain.request();if(ads&&AdRules.blocked(r.url().host()))return new Response.Builder().request(r).protocol(Protocol.HTTP_1_1).code(204).message("Filtered").body(ResponseBody.create(new byte[0],null)).build();return chain.proceed(r);}).build();
  }
  public String text(String url,String form,String referer)throws Exception{
@@ -115,7 +120,7 @@ public class SoopClient {
  }
  public PlaybackInfo resolve(ContentItem item)throws Exception{
   if(item.vod)return PlaybackInfo.vod(json("https://api.m.sooplive.com/station/video/a/view","nTitleNo="+encode(item.id)+"&nApiLevel=10",item.pageUrl()));
-  beginPlayback();JSONObject mobile=mobileWatch(item);
+  beginPlayback();JSONObject mobile;try{mobile=mobileWatch(item);}catch(IdentityVerificationException denied){return resolveVerifiedDesktop(item,denied);}
   // Keep the existing web chat handshake, independently of media authentication.
   JSONObject channel=new JSONObject();
   try{JSONObject web=json("https://live.sooplive.com/afreeca/player_live_api.php","bid="+encode(item.user)+"&bno="+encode(mobile.optString("broad_no"))+"&type=live&player_type=html5&stream_type=common",item.pageUrl()).optJSONObject("CHANNEL");if(web!=null&&web.optInt("RESULT")==1)channel=web;}catch(IOException ignored){}
@@ -129,7 +134,7 @@ public class SoopClient {
  public JSONObject mobileWatch(ContentItem item)throws Exception{
   JSONObject response=playbackJson("방송 정보","https://api.m.sooplive.com/broad/a/watch","bj_id="+encode(item.user)+"&broad_no="+(item.id.matches("[0-9]+")?encode(item.id):"")+"&agent=web&player_type=webm&mode=live","https://m.sooplive.com/");
   JSONObject data=response.optJSONObject("data");
-  if(response.optInt("result")!=1||data==null||data.optInt("code",0)<0)throw new IOException(data==null?"방송 정보를 확인할 수 없습니다":data.optString("message","로그인·시청 권한 또는 방송 상태를 확인하세요"));
+  if(response.optInt("result")!=1||data==null||data.optInt("code",0)<0){String message=data==null?"방송 정보를 확인할 수 없습니다":data.optString("message","로그인·시청 권한 또는 방송 상태를 확인하세요");String lower=message.toLowerCase(Locale.ROOT);if(lower.contains("verify your identity")||message.contains("본인인증")||message.contains("본인 인증")||message.contains("성인인증")||message.contains("성인 인증")){trace("모바일 시청 권한: 본인 · 성인 인증 확인 필요");throw new IdentityVerificationException();}throw new IOException(message);}
   if(data.optString("broad_no").isEmpty())throw new IOException("방송 중이 아닙니다");trace("방송 원본: "+data.optString("resolution","미제공")+" · 서버 지역: "+data.optString("country_code","미제공"));return data;
  }
  private boolean manualCanUseWeb(JSONObject channel,String quality){if(quality.equals("auto")||quality.equals("master"))return true;for(LiveQuality q:LiveQuality.offered(channel))if(q.id.equals(quality)&&q.height>0&&q.height<=540)return true;return false;}
@@ -147,7 +152,7 @@ public class SoopClient {
     try{return mobileManifest(mobile,quality,attempt[0],castCdn,attempt[1],false,direct);}catch(IOException e){castFailure=e;trace(attempt[1]+" 실패");if(authorizationFailure(e)){highQualityDenied=true;break;}}
    }
   }
-  if(castFailure!=null&&!highQualityDenied&&!webOnly&&!quality.equals("auto")&&!quality.equals("master")){
+  if((castFailure!=null||castKey.isEmpty()||castCdn.isEmpty())&&!highQualityDenied&&!webOnly&&!quality.equals("auto")&&!quality.equals("master")){
    try{return desktopHighQuality(item,mobile,quality);}catch(IOException e){castFailure=e;trace("화질별 웹 인증 경로 실패 · 다른 고화질 경로를 재시도하지 않습니다");}
   }
   if(!allowWebFallback&&!webOnly){if(castFailure!=null)throw new IOException("요청 화질 연결 실패 · 현재 재생을 유지합니다",castFailure);throw new IOException("서버가 고화질 재생 인증을 제공하지 않았습니다");}
@@ -163,6 +168,18 @@ public class SoopClient {
   JSONObject channel=response.optJSONObject("CHANNEL");
   if(channel==null||channel.optInt("RESULT")!=1)throw new PlaybackAuthorizationException("웹 방송의 로그인·시청 권한을 확인하세요");
   if(!channel.optString("BNO").equals(bno))throw new IOException("방송 정보가 변경되었습니다 · 다시 연결하세요");
+  return desktopMedia(item,channel,bno,quality);
+ }
+ private PlaybackInfo resolveVerifiedDesktop(ContentItem item,IdentityVerificationException denied)throws Exception{
+  // The mobile API can require a separate identity session. Only the PC server's
+  // independently granted, validated entitlement may authorize this route.
+  try{JSONObject response=playbackJson("웹 시청 권한 확인","https://live.sooplive.com/afreeca/player_live_api.php","bid="+encode(item.user)+"&bno="+(item.id.matches("[0-9]+")?encode(item.id):"")+"&type=live&player_type=html5&stream_type=common",item.pageUrl());JSONObject channel=response.optJSONObject("CHANNEL");
+   if(channel==null||channel.optInt("RESULT")!=1||!channel.optString("BNO").matches("[0-9]+")||(item.id.matches("[0-9]+")&&!channel.optString("BNO").equals(item.id)))throw denied;
+   PlaybackInfo info=new PlaybackInfo();info.live=channel;info.user=item.user;info.title=channel.optString("TITLE",item.title);info.qualities.addAll(LiveQuality.offered(channel));info.selectedQuality=LiveQuality.preferred(info.qualities);channel.put("_VERIFIED_WEB",true);info.media.add(desktopMedia(item,channel,channel.optString("BNO"),info.selectedQuality));trace("웹 서버 시청 인증 및 재생 목록 확인 완료");return info;
+  }catch(Exception failed){trace("웹 시청 권한을 확인하지 못했습니다 · 공식 본인 인증 필요");throw denied;}
+ }
+ private String desktopMedia(ContentItem item,JSONObject channel,String bno,String quality)throws IOException{
+  String endpoint="https://live.sooplive.com/afreeca/player_live_api.php";
   boolean offered=false;for(LiveQuality q:LiveQuality.offered(channel))if(q.id.equals(quality))offered=true;
   if(!offered)throw new IOException("웹 서버가 요청 화질을 제공하지 않습니다");
   JSONObject token=playbackJson("화질별 웹 인증",endpoint,"bid="+encode(item.user)+"&bno="+encode(bno)+"&type=aid&stream_type=common&quality="+encode(quality)+"&player_type=html5&mode=landing&from_api=0",item.pageUrl()).optJSONObject("CHANNEL");
@@ -206,10 +223,11 @@ public class SoopClient {
   trace(route+" 재생 주소 확인 완료");return rememberMedia(selected,"https://m.sooplive.com/");
  }
  public String fallbackLiveStream(ContentItem item,JSONObject channel,String quality)throws Exception{
-  beginPlayback();trace("플레이어 오류 후 모바일 웹으로 1회 복구");return mobileStream(item,mobileWatch(item),quality,true);
+  beginPlayback();trace("플레이어 오류 후 요청 화질로 인증을 갱신하여 1회 복구");if(channel.optBoolean("_VERIFIED_WEB"))return desktopHighQuality(item,new JSONObject().put("broad_no",channel.optString("BNO")),quality);return mobileStream(item,mobileWatch(item),quality,false);
  }
 
  public String liveStream(ContentItem item,JSONObject channel,String quality)throws Exception{
+  if(channel.optBoolean("_VERIFIED_WEB"))return desktopHighQuality(item,new JSONObject().put("broad_no",channel.optString("BNO")),quality);
   if(channel.optBoolean("_MOBILE")){beginPlayback();return mobileStream(item,mobileWatch(item),quality,false,manualCanUseWeb(channel,quality));}
   if(!quality.matches("[A-Za-z0-9_\\-]+"))throw new IllegalArgumentException("화질 정보가 올바르지 않습니다");
   String bno=channel.optString("BNO");JSONObject token=json("https://live.sooplive.com/afreeca/player_live_api.php","bid="+encode(item.user)+"&bno="+encode(bno)+"&type=aid&stream_type=common&quality="+encode(quality)+"&player_type=html5&mode=landing&from_api=0",item.pageUrl()).optJSONObject("CHANNEL");
