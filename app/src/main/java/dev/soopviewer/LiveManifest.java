@@ -22,4 +22,17 @@ public final class LiveManifest {
   }
   throw new IOException("서버가 선택한 화질을 제공하지 않습니다");
  }
+ /** The web entitlement may advertise only hd (540p), even after original was requested. */
+ public static String bestAvailable(String base,String body)throws IOException{
+  select(base,body,"auto");if(!body.contains("#EXT-X-STREAM-INF:"))return base;
+  String best="",first="";int bestHeight=-1;Pattern resolution=Pattern.compile("(?:^|,)RESOLUTION=[0-9]+[xX]([0-9]+)");String[] lines=body.split("\\r?\\n");
+  for(int i=0;i<lines.length;i++)if(lines[i].startsWith("#EXT-X-STREAM-INF:")){
+   Matcher match=resolution.matcher(lines[i].substring(lines[i].indexOf(':')+1));int height=match.find()?Integer.parseInt(match.group(1)):0;
+   for(int j=i+1;j<lines.length;j++){String line=lines[j].trim();if(line.isEmpty())continue;if(line.startsWith("#EXT-X-STREAM-INF:"))break;if(line.startsWith("#"))continue;
+    String uri=ServiceUrls.https(URI.create(base).resolve(line).toString());if(!uri.isEmpty()){if(first.isEmpty())first=uri;if(height<=1080&&height>bestHeight){best=uri;bestHeight=height;}}break;
+   }
+  }
+  if(!best.isEmpty())return best;if(!first.isEmpty())return first;throw new IOException("재생 가능한 영상 목록이 없습니다");
+ }
+
 }

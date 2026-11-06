@@ -102,13 +102,13 @@ public class SoopClient {
   String castKey=cast?mobile.optString("chromecast_authentication_key"):"",castCdn=cast?mobile.optString("cdn_chromecast"):"";
   IOException castFailure=null;
   if(!castKey.isEmpty()&&!castCdn.isEmpty())try{
-   return mobileManifest(mobile,quality,castKey,castCdn,"고화질");
+   return mobileManifest(mobile,quality,castKey,castCdn,"고화질",false);
   }catch(IOException e){if(authorizationFailure(e))throw e;castFailure=e;trace("고화질 경로 실패 · 모바일 웹 경로 확인");}
   String webKey=mobile.optString("hls_authentication_key"),webCdn=mobile.optString("cdn");
   if(webKey.isEmpty()||webCdn.isEmpty()){if(castFailure!=null)throw castFailure;throw new IOException("생방송 시청 인증을 받지 못했습니다");}
-  try{return mobileManifest(mobile,quality,webKey,webCdn,"모바일 웹");}catch(IOException e){if(castFailure!=null)e.addSuppressed(castFailure);throw e;}
+  try{return mobileManifest(mobile,quality,webKey,webCdn,"모바일 웹",true);}catch(IOException e){if(castFailure!=null)e.addSuppressed(castFailure);throw e;}
  }
- private String mobileManifest(JSONObject mobile,String quality,String aid,String assignedCdn,String route)throws IOException{
+ private String mobileManifest(JSONObject mobile,String quality,String aid,String assignedCdn,String route,boolean allowLower)throws IOException{
   String cdn=mobileWebCdn(assignedCdn);if(!cdn.matches("[A-Za-z0-9_\\-]+"))throw new IOException("재생 서버 정보가 올바르지 않습니다");
   trace(route+" CDN: "+assignedCdn+" → "+cdn);
   String manager=ServiceUrls.https(mobile.optString("mobileweb_resource_manager_url"));
@@ -119,7 +119,7 @@ public class SoopClient {
   String master=HttpUrl.get(media).newBuilder().setQueryParameter("aid",aid).build().toString();
   String selected;
   String masterBody=playbackText(route+" 재생 목록",master);
-  try{selected=LiveManifest.select(master,masterBody,quality);}catch(IOException e){throw stageFailure(route+" 화질 선택",e);}
+  try{selected=LiveManifest.select(master,masterBody,quality);}catch(IOException e){if(!allowLower)throw stageFailure(route+" 화질 선택",e);try{selected=LiveManifest.bestAvailable(master,masterBody);trace("웹 권한에서 제공하는 화질로 재생 · 실제 해상도 확인 필요");}catch(IOException invalid){throw stageFailure(route+" 화질 선택",invalid);}}
   // A valid master does not prove that the signed child playlist is usable.
   if(!selected.equals(master)){
    String child=playbackText(route+" 영상 목록",selected);
